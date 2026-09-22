@@ -967,13 +967,15 @@ def get_fallback_trend_data():
         "chart_values": [],
         "region_scope": "worldwide"
     }
-    @app.route("/api/debug-env")
+
+
+@app.route("/api/debug-env")
 def debug_env():
     return jsonify({
         "has_groq": bool(os.getenv("GROQ_API_KEY")),
         "has_pexels": bool(os.getenv("PEXELS_API_KEY")),
         "has_proxy": bool(os.getenv("GOOGLE_TRENDS_PROXIES")),
-    }
+    })
 
 
 def normalize_trends_keyword(keyword):
