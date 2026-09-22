@@ -1,0 +1,7 @@
+Flask
+python-dotenv
+requests
+groq
+pytrends
+Markdown
+urllib3<2
