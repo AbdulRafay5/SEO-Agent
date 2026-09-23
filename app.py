@@ -792,60 +792,72 @@ def extract_ai_title_candidates(raw_text):
     return candidates
 
 
+def _locate_title_end(text, title):
+    """Return the index right after `title` inside `text`, tolerating minor
+    wording differences from the model (punctuation, pluralization, etc.),
+    or None if it can't be confidently located."""
+    if not title:
+        return None
+    lower_text = text.casefold()
+    lower_title = title.casefold()
+
+    idx = lower_text.find(lower_title)
+    if idx >= 0:
+        return idx + len(title)
+
+    matcher = difflib.SequenceMatcher(None, lower_text, lower_title)
+    match = matcher.find_longest_match(0, len(lower_text), 0, len(lower_title))
+    if match.size >= len(lower_title) * 0.6:
+        return match.a + match.size
+
+    return None
+
+
+def _split_heading_from_intro(heading_text, title):
+    """Split a raw H1 line into (title, introduction) so a run-on line from
+    the model - where the intro got glued onto the title with no break -
+    never gets rendered as one giant heading."""
+    split_at = _locate_title_end(heading_text, title)
+
+    if split_at is None:
+        # Title text couldn't be matched closely enough - fall back to the
+        # first sentence boundary so at least something splits off as the
+        # title instead of leaving the whole line as one heading.
+        sentence_end = re.search(r"[.!?](?:\s+|$)", heading_text)
+        if sentence_end and sentence_end.start() < 160:
+            split_at = sentence_end.end()
+
+    if split_at is None or split_at >= len(heading_text):
+        return heading_text.strip(), ""
+
+    final_title = (title or heading_text[:split_at]).strip(" :-")
+    introduction = heading_text[split_at:].strip(" :-")
+
+    sentence_match = re.match(r"(.+?[.!?])(?:\s+|$)(.*)", introduction)
+    if sentence_match:
+        introduction = "\n\n".join(part for part in sentence_match.groups() if part.strip())
+
+    return final_title, introduction
+
+
 def ensure_h1_title(body, chosen_title=None):
     body = body.strip()
     if not body:
         return body
 
-    first_line, separator, remaining = body.partition("\n")
+    first_line, _, remaining = body.partition("\n")
     first_line = first_line.strip()
     title = chosen_title.strip() if chosen_title else ""
+
     heading_match = re.match(r"^#{1,6}\s+(.+)$", first_line)
-    if heading_match:
-        heading_text = heading_match.group(1).strip()
-        title_index = heading_text.casefold().find(title.casefold()) if title else -1
-        if title_index < 0:
-            split_match = re.search(
-                r"\s+(?=(?:face a daily dilemma|built sales channels|is no longer|means balancing|often face|online merchants|retailers who|businesses that))",
-                heading_text,
-                re.IGNORECASE,
-            )
-            if not split_match:
-                return body
-            title = heading_text[:split_match.start()].rstrip(" :-")
-            introduction = heading_text[split_match.end():].strip()
-        else:
-            introduction = heading_text[title_index + len(title):].lstrip(" :-")
-        sentence_match = re.match(r"(.+?[.!?])(?:\s+|$)(.*)", introduction)
-        if sentence_match:
-            introduction = "\n\n".join(part for part in sentence_match.groups() if part.strip())
-        if remaining.strip():
-            introduction = "\n\n".join(part for part in (introduction, remaining.strip()) if part)
-        return f"# {title}\n\n{introduction}" if introduction else f"# {title}"
+    heading_text = heading_match.group(1).strip() if heading_match else first_line
 
-    title_match = re.search(re.escape(title), first_line, re.IGNORECASE) if title else None
-    if title_match:
-        introduction = first_line[title_match.end():].lstrip(" :-")
-        opener_index = introduction.casefold().find("this is exactly why")
-        if opener_index > 0:
-            introduction = introduction[opener_index:]
-        sentence_match = re.match(r"(.+?[.!?])(?:\s+|$)(.*)", introduction)
-        if sentence_match:
-            introduction = "\n\n".join(part for part in sentence_match.groups() if part.strip())
-        if remaining.strip():
-            introduction = "\n\n".join(part for part in (introduction, remaining.strip()) if part)
-    else:
-        title_match = re.match(r"^(.+?)(?:\s+This is exactly why\s+.+?\s+continues to gain traction among .+?\.)\s*$", first_line, re.IGNORECASE)
-        if title_match:
-            title = title_match.group(1).strip(" :-")
-            introduction = first_line[len(title):].lstrip(" :-")
-            if remaining.strip():
-                introduction = "\n\n".join(part for part in (introduction, remaining.strip()) if part)
-        else:
-            title = first_line
-            introduction = remaining.strip()
+    final_title, introduction = _split_heading_from_intro(heading_text, title)
 
-    return f"# {title}\n\n{introduction}" if introduction else f"# {title}"
+    if remaining.strip():
+        introduction = "\n\n".join(part for part in (introduction, remaining.strip()) if part)
+
+    return f"# {final_title}\n\n{introduction}" if introduction else f"# {final_title}"
 
 
 def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional"):
@@ -1145,8 +1157,9 @@ def fetch_trends_data(searched_keyword, timeframe):
     raise last_error
 
 
-@app.route("/api/trends/<path:keyword>")
-def api_trends(keyword):
+@app.route("/api/trends")
+def api_trends():
+    keyword = request.args.get("keyword", "")
     searched_keyword = normalize_trends_keyword(keyword)
     if not searched_keyword:
         return jsonify({"error": "Please enter a search term."}), 400
