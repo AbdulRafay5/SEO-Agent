@@ -553,51 +553,69 @@
     let trendsChartInstance = null;
     let pendingConfirmAction = null;
 
+    function locateTitleEnd(text, title) {
+      // Mirrors app.py's _locate_title_end: tolerate minor wording
+      // differences from the model instead of only matching an exact
+      // substring, so a near-miss doesn't leave the whole line as one heading.
+      if (!title) return -1;
+      const lowerText = text.toLowerCase();
+      const lowerTitle = title.toLowerCase();
+
+      const idx = lowerText.indexOf(lowerTitle);
+      if (idx >= 0) return idx + title.length;
+
+      let bestLen = 0;
+      let bestEnd = -1;
+      for (let start = 0; start < lowerText.length; start++) {
+        let len = 0;
+        while (len < lowerTitle.length && lowerText[start + len] === lowerTitle[len]) len++;
+        if (len > bestLen) {
+          bestLen = len;
+          bestEnd = start + len;
+        }
+      }
+      if (bestLen >= lowerTitle.length * 0.6) return bestEnd;
+      return -1;
+    }
+
+    function splitHeadingFromIntro(headingText, title) {
+      let splitAt = locateTitleEnd(headingText, title);
+
+      if (splitAt < 0) {
+        const sentenceEnd = headingText.match(/[.!?](?:\s+|$)/);
+        if (sentenceEnd && sentenceEnd.index < 160) {
+          splitAt = sentenceEnd.index + sentenceEnd[0].length;
+        }
+      }
+
+      if (splitAt < 0 || splitAt >= headingText.length) {
+        return [headingText.trim(), ""];
+      }
+
+      const finalTitle = (title || headingText.slice(0, splitAt)).replace(/[\s:-]+$/, "");
+      let introduction = headingText.slice(splitAt).replace(/^[\s:-]+/, "");
+
+      const sentenceMatch = introduction.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
+      if (sentenceMatch) introduction = [sentenceMatch[1], sentenceMatch[2]].filter(Boolean).join("\n\n");
+
+      return [finalTitle, introduction];
+    }
+
     function normalizePreviewMarkdown(content, selectedTitle = "") {
       const body = (content || "").trim();
       if (!body) return body;
 
       const lines = body.split("\n");
       const firstLine = lines[0].trim();
-
       const title = selectedTitle.trim();
+
       const headingMatch = firstLine.match(/^#{1,6}\s+(.+)$/);
-      if (headingMatch) {
-        const headingText = headingMatch[1].trim();
-        const titleIndex = title ? headingText.toLowerCase().indexOf(title.toLowerCase()) : -1;
-        let headingTitle = title;
-        let introduction;
-        if (titleIndex < 0) {
-          const splitMatch = headingText.search(/\s+(?=(?:face a daily dilemma|built sales channels|is no longer|means balancing|often face|online merchants|retailers who|businesses that))/i);
-          if (splitMatch < 0) return body;
-          headingTitle = headingText.slice(0, splitMatch).replace(/[\s:-]+$/, "");
-          introduction = headingText.slice(splitMatch).trim();
-        } else {
-          introduction = headingText.slice(titleIndex + title.length).replace(/^[\s:-]+/, "");
-        }
-        const sentenceMatch = introduction.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
-        if (sentenceMatch) introduction = [sentenceMatch[1], sentenceMatch[2]].filter(Boolean).join("\n\n");
-        const rest = lines.slice(1).join("\n").trim();
-        const combined = [introduction, rest].filter(Boolean).join("\n\n");
-        return `# ${headingTitle}${combined ? `\n\n${combined}` : ""}`;
-      }
+      const headingText = headingMatch ? headingMatch[1].trim() : firstLine;
 
-      if (title) {
-        const titleIndex = firstLine.toLowerCase().indexOf(title.toLowerCase());
-        if (titleIndex >= 0) {
-          let introduction = firstLine.slice(titleIndex + title.length).replace(/^[\s:-]+/, "");
-          const openerIndex = introduction.toLowerCase().indexOf("this is exactly why");
-          if (openerIndex > 0) introduction = introduction.slice(openerIndex);
-          const sentenceMatch = introduction.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
-          if (sentenceMatch) introduction = [sentenceMatch[1], sentenceMatch[2]].filter(Boolean).join("\n\n");
-          const rest = lines.slice(1).join("\n").trim();
-          introduction = [introduction, rest].filter(Boolean).join("\n\n");
-          return `# ${title}${introduction ? `\n\n${introduction}` : ""}`;
-        }
-      }
-
+      const [finalTitle, introduction] = splitHeadingFromIntro(headingText, title);
       const rest = lines.slice(1).join("\n").trim();
-      return `# ${firstLine}${rest ? `\n\n${rest}` : ""}`;
+      const combined = [introduction, rest].filter(Boolean).join("\n\n");
+      return `# ${finalTitle}${combined ? `\n\n${combined}` : ""}`;
     }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -1008,7 +1026,7 @@
       badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-500 animate-pulse";
 
       try {
-        const res = await fetch(`/api/trends/${encodeURIComponent(kw)}?timeframe=${selectedTrendTimeframe}&fresh=1`);
+        const res = await fetch(`/api/trends?keyword=${encodeURIComponent(kw)}&timeframe=${selectedTrendTimeframe}&fresh=1`);
         const data = await res.json();
 
         const chartLabels = data.chart_labels || data.interest_over_time?.labels || [];
