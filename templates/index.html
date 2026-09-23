@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
@@ -764,6 +764,14 @@
       showToast("Article brief saved. The writer will use it during generation.");
     }
 
+    async function readApiResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`The server returned ${response.status} instead of an API response. Check the Render service logs.`);
+      }
+      return response.json();
+    }
+
     /* STEP 1: BRAINSTORM 6 TITLES VIA /api/titles/<keyword> */
     async function fetchTitleOptions() {
       const kw = document.getElementById('target-keyword').value.trim();
@@ -783,7 +791,7 @@
 
       try {
         const res = await fetch(`/api/titles/${encodeURIComponent(kw)}`);
-        const data = await res.json();
+        const data = await readApiResponse(res);
 
         if (!res.ok) throw new Error(data.error || "Title generation failed");
 
@@ -891,7 +899,7 @@
 
       try {
         const response = await fetch(url);
-        const data = await response.json();
+        const data = await readApiResponse(response);
 
         if (response.status === 429) {
           triggerCooldown(data.error || "Cooldown in progress. Please wait a few seconds.");
