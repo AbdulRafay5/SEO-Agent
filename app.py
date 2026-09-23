@@ -1006,6 +1006,16 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
     pytrends.build_payload([keyword], timeframe=timeframe)
     interest = _format_interest_over_time(pytrends.interest_over_time(), keyword)
     try:
+        pytrends.build_payload([keyword], timeframe=timeframe)
+    except Exception as error:
+        raise RuntimeError(f"Google Trends payload request failed: {error}") from error
+
+    try:
+        interest = _format_interest_over_time(pytrends.interest_over_time(), keyword)
+    except Exception as error:
+        raise RuntimeError(f"Google Trends interest request failed: {error}") from error
+        
+    try:
         related = pytrends.related_queries() or {}
     except Exception as error:
         app.logger.warning(
