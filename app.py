@@ -993,7 +993,9 @@ def get_fallback_trend_data():
         "region_data": [],
         "chart_labels": [],
         "chart_values": [],
-        "region_scope": "Pakistan"
+        "region_scope": "Pakistan",
+        "top_queries": [],
+        "rising_queries": []
     }
 
 
@@ -1018,6 +1020,35 @@ def _format_region_data(region_df, keyword, limit=30):
     series = region_df[keyword].fillna(0).astype(int)
     series = series[series > 0].sort_values(ascending=False).head(limit)
     return [{"region": str(region), "value": int(value)} for region, value in series.items()]
+
+
+def is_related_query(query, keyword):
+    """Loose relevance check so we drop Google's occasional unrelated
+    breakout suggestions that share no words at all with the searched term."""
+    keyword_terms = set(re.findall(r"[a-z0-9]+", keyword.casefold()))
+    query_terms = set(re.findall(r"[a-z0-9]+", str(query).casefold()))
+    meaningful_terms = {term for term in keyword_terms if len(term) >= 2}
+
+    if meaningful_terms & query_terms:
+        return True
+
+    return any(
+        len(keyword_term) >= 5
+        and len(query_term) >= 5
+        and (keyword_term.startswith(query_term) or query_term.startswith(keyword_term))
+        for keyword_term in meaningful_terms
+        for query_term in query_terms
+    )
+
+
+def _format_related_queries(query_df, keyword, limit=10):
+    if query_df is None or query_df.empty:
+        return []
+    filtered = query_df[query_df["query"].map(lambda query: is_related_query(query, keyword))]
+    return [
+        {"query": str(row["query"]), "value": row["value"]}
+        for _, row in filtered.head(limit).iterrows()
+    ]
 
 
 def _query_google_trends(pytrends, keyword, timeframe, geo):
@@ -1045,9 +1076,26 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
 
     region_data = _format_region_data(region_df, keyword)
 
+    top_queries = []
+    rising_queries = []
+    try:
+        related = pytrends.related_queries() or {}
+        query_data = next(
+            (value for key, value in related.items() if key.casefold() == keyword.casefold()),
+            {},
+        ) or {}
+        top_queries = _format_related_queries(query_data.get("top"), keyword)
+        rising_queries = _format_related_queries(query_data.get("rising"), keyword)
+    except Exception as error:
+        app.logger.warning(
+            "Google Trends related-queries request failed for %r: %s", keyword, error
+        )
+
     return {
         "interest_over_time": interest,
         "region_data": region_data,
+        "top_queries": top_queries,
+        "rising_queries": rising_queries,
     }
 
 
@@ -1122,6 +1170,8 @@ def fetch_trends_data(searched_keyword, timeframe):
             region_data = trends_data["region_data"]
             chart_labels = interest_over_time["labels"]
             chart_values = interest_over_time["values"]
+            top_queries = trends_data["top_queries"]
+            rising_queries = trends_data["rising_queries"]
 
             result = {
                 "interest_over_time": interest_over_time,
@@ -1129,10 +1179,14 @@ def fetch_trends_data(searched_keyword, timeframe):
                 "chart_values": chart_values,
                 "region_data": region_data,
                 "region_scope": "Pakistan",
+                "top_queries": top_queries,
+                "rising_queries": rising_queries,
             }
             has_data = bool(
                 chart_values
                 or region_data
+                or top_queries
+                or rising_queries
             )
             _TRENDS_CACHE[cache_key] = {
                 "timestamp": time.time(),
@@ -1178,10 +1232,14 @@ def api_trends():
         data = fetch_trends_data(searched_keyword, timeframe)
 
         region_data = data["region_data"]
+        top_queries = data["top_queries"]
+        rising_queries = data["rising_queries"]
 
         has_data = bool(
             data["chart_values"]
             or region_data
+            or top_queries
+            or rising_queries
         )
         if not has_data:
             fallback = get_fallback_trend_data()
@@ -1197,7 +1255,9 @@ def api_trends():
             "region_data": region_data,
             "chart_labels": data["chart_labels"],
             "chart_values": data["chart_values"],
-            "region_scope": data["region_scope"]
+            "region_scope": data["region_scope"],
+            "top_queries": top_queries,
+            "rising_queries": rising_queries
         })
     except Exception as error:
         app.logger.warning("Google Trends request failed for %r: %s", searched_keyword, error)
