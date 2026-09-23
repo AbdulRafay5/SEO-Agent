@@ -1149,7 +1149,7 @@ def fetch_trends_data(searched_keyword, timeframe):
             "geo": "",
             "retries": 0,
             "backoff_factor": 0,
-            "timeout": (10, 30),
+            "timeout": (10, 60),
             "requests_args": {
                 "headers": {"User-Agent": random.choice(_TRENDS_USER_AGENTS)}
             },
