@@ -1021,10 +1021,6 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
     query_data = query_data or {}
     top_df = query_data.get("top")
     rising_df = query_data.get("rising")
-    if top_df is not None and not top_df.empty:
-        top_df = top_df[top_df["query"].map(lambda query: _is_related_query(query, keyword))]
-    if rising_df is not None and not rising_df.empty:
-        rising_df = rising_df[rising_df["query"].map(lambda query: _is_related_query(query, keyword))]
 
     top_slice = top_df.head(25) if top_df is not None and not top_df.empty else None
     rising_slice = rising_df.head(25) if rising_df is not None and not rising_df.empty else None
