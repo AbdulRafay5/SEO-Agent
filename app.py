@@ -1280,7 +1280,7 @@ def api_titles(keyword):
     try:
         prompt = build_title_prompt(keyword)
         response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="qwen/qwen3.8-27b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1200
         )
@@ -1332,7 +1332,7 @@ def api_generate(keyword):
 
         for attempt in range(3):
             response = client.chat.completions.create(
-                model="openai/gpt-oss-120b",
+                model="qwen/qwen3.8-27b",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=4000
             )
