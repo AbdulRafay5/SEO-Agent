@@ -3,7 +3,6 @@ from dotenv import dotenv_values, load_dotenv
 from datetime import date
 import os
 import re
-import math
 import random
 import time
 import tempfile
@@ -13,6 +12,7 @@ import requests
 from groq import Groq
 from pytrends.request import TrendReq
 from keywords import all_keywords, keyword_links, CONTACT_URL
+import github_store
 
 app = Flask(__name__)
 
@@ -30,8 +30,17 @@ CURRENT_DATE = date.today().strftime("%B %-d, %Y") if os.name != "nt" else date.
 
 os.makedirs(BLOGS_FOLDER, exist_ok=True)
 
-groq_key = os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
-pexels_key = os.getenv("PEXELS_API_KEY") or dotenv_settings.get("PEXELS_API_KEY")
+DRAFTS_REPO_DIR = "drafts"  # folder inside the GitHub datastore repo
+
+# Key resolution order: GitHub settings.json (editable without a redeploy,
+# and doesn't depend on Vercel's env vars actually being picked up) -> real
+# env var -> local .env file. This fixes the "Vercel isn't picking up
+# GROQ_API_KEY/PEXELS_API_KEY" issue: as long as GITHUB_REPO/GITHUB_TOKEN
+# are set, the actual API keys can live in the repo's settings.json instead
+# and are re-read on every cold start.
+_repo_settings = github_store.load_settings()
+groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
+pexels_key = _repo_settings.get("pexelsApiKey") or os.getenv("PEXELS_API_KEY") or dotenv_settings.get("PEXELS_API_KEY")
 client = Groq(api_key=groq_key)
 
 
@@ -927,7 +936,12 @@ Output only the finished article content described above - no commentary, no exp
 
 @app.route("/")
 def home():
-    files = sorted(set(os.listdir(BUNDLED_BLOGS_FOLDER) + os.listdir(BLOGS_FOLDER)))
+    # Local disk (BLOGS_FOLDER) only survives within one serverless
+    # instance's lifetime, so it's unioned with whatever's saved in the
+    # GitHub datastore repo, which survives cold starts and redeploys.
+    local_files = set(os.listdir(BUNDLED_BLOGS_FOLDER) + os.listdir(BLOGS_FOLDER))
+    repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
+    files = sorted(local_files | repo_files)
     return render_template("index.html", files=files, keywords=all_keywords)
 
 
@@ -940,12 +954,20 @@ def view_blog(filename):
 
     runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
     bundled_filepath = os.path.join(BUNDLED_BLOGS_FOLDER, safe_filename)
-    filepath = runtime_filepath if os.path.exists(runtime_filepath) else bundled_filepath
-    if not os.path.isfile(filepath):
-        abort(404)
 
-    with open(filepath, "r", encoding="utf-8") as f:
-        raw_text = f.read()
+    if os.path.exists(runtime_filepath):
+        with open(runtime_filepath, "r", encoding="utf-8") as f:
+            raw_text = f.read()
+    elif os.path.isfile(bundled_filepath):
+        with open(bundled_filepath, "r", encoding="utf-8") as f:
+            raw_text = f.read()
+    else:
+        # Not on local disk (likely a fresh serverless instance) - fall
+        # back to the GitHub datastore repo before giving up.
+        raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+        if raw_text is None:
+            abort(404)
+
     html_content = markdown.markdown(raw_text, extensions=["tables"])
     return render_template("blog.html", content=html_content)
 
@@ -1349,6 +1371,19 @@ def api_generate(keyword):
         filepath = os.path.join(BLOGS_FOLDER, f"{safe_filename}.md")
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(body)
+
+        # Best-effort persistence to the GitHub datastore repo, so the blog
+        # survives past this serverless instance's lifetime. If GitHub
+        # isn't configured (local dev, or env vars not set yet) this is a
+        # silent no-op and the local-disk copy above still works as before.
+        try:
+            github_store.save_file(
+                f"{DRAFTS_REPO_DIR}/{safe_filename}.md",
+                body,
+                message=f"Generate draft: {keyword}",
+            )
+        except Exception:
+            app.logger.exception("Failed to save draft to GitHub datastore repo")
 
         with open(LAST_GEN_FILE, "w") as f:
             f.write(str(time.time()))
