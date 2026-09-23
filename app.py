@@ -977,17 +977,11 @@ def get_fallback_trend_data():
         "source": "unavailable",
         "searched_keyword": "",
         "timeframe": "1m",
-        "top_labels": [],
-        "rising_labels": [],
-        "labels": [],
-        "top": [],
-        "rising": [],
         "interest_over_time": {"labels": [], "values": []},
-        "top_queries": [],
-        "rising_queries": [],
+        "region_data": [],
         "chart_labels": [],
         "chart_values": [],
-        "region_scope": "worldwide"
+        "region_scope": "Pakistan"
     }
 
 
@@ -1004,29 +998,21 @@ def _format_interest_over_time(interest, keyword):
     return {"labels": labels, "values": series.tolist()}
 
 
-def _is_related_query(query, keyword):
-    keyword_terms = set(re.findall(r"[a-z0-9]+", keyword.casefold()))
-    query_terms = set(re.findall(r"[a-z0-9]+", str(query).casefold()))
-    meaningful_terms = {term for term in keyword_terms if len(term) >= 2}
-
-    if meaningful_terms & query_terms:
-        return True
-
-    return any(
-        len(keyword_term) >= 5
-        and len(query_term) >= 5
-        and (keyword_term.startswith(query_term) or query_term.startswith(keyword_term))
-        for keyword_term in meaningful_terms
-        for query_term in query_terms
-    )
+def _format_region_data(region_df, keyword, limit=30):
+    """Interest-by-region, sorted high to low, matching the map view on the
+    real Google Trends site (minus the map graphic itself)."""
+    if region_df is None or region_df.empty or keyword not in region_df.columns:
+        return []
+    series = region_df[keyword].fillna(0).astype(int)
+    series = series[series > 0].sort_values(ascending=False).head(limit)
+    return [{"region": str(region), "value": int(value)} for region, value in series.items()]
 
 
 def _query_google_trends(pytrends, keyword, timeframe, geo):
-    # An empty geo is Google Trends' worldwide scope. Build one payload and use
-    # it for all three views so their timeframe and comparison are identical.
+    # geo="PK" scopes every view below to Pakistan only, so a country already
+    # scoped this way needs a REGION (province-level) breakdown, not COUNTRY.
     pytrends.geo = geo
-    pytrends.build_payload([keyword], timeframe=timeframe)
-    interest = _format_interest_over_time(pytrends.interest_over_time(), keyword)
+    region_resolution = "REGION" if geo else "COUNTRY"
     try:
         pytrends.build_payload([keyword], timeframe=timeframe)
     except Exception as error:
@@ -1036,49 +1022,20 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
         interest = _format_interest_over_time(pytrends.interest_over_time(), keyword)
     except Exception as error:
         raise RuntimeError(f"Google Trends interest request failed: {error}") from error
-        
+
     try:
-        related = pytrends.related_queries() or {}
+        region_df = pytrends.interest_by_region(resolution=region_resolution, inc_low_vol=True)
     except Exception as error:
         app.logger.warning(
-            "Google Trends related-query request failed for %r: %s", keyword, error
+            "Google Trends interest-by-region request failed for %r: %s", keyword, error
         )
-        related = {}
+        region_df = None
 
-    query_data = next(
-        (value for key, value in related.items() if key.casefold() == keyword.casefold()),
-        {},
-    )
+    region_data = _format_region_data(region_df, keyword)
 
-    query_data = query_data or {}
-    top_df = query_data.get("top")
-    rising_df = query_data.get("rising")
-
-    top_slice = top_df.head(25) if top_df is not None and not top_df.empty else None
-    rising_slice = rising_df.head(25) if rising_df is not None and not rising_df.empty else None
-
-    top_labels = top_slice["query"].astype(str).tolist() if top_slice is not None else []
-    top_values = top_slice["value"].fillna(0).astype(int).tolist() if top_slice is not None else []
-    rising_labels = rising_slice["query"].astype(str).tolist() if rising_slice is not None else []
-
-    rising_values = []
-    if rising_slice is not None and len(rising_slice) > 0:
-        rising_values = rising_slice["value"].apply(
-            lambda value: "Breakout" if str(value).casefold() == "breakout" else float(value)
-        ).tolist()
-
-    top_queries = [
-        {"query": label, "value": value}
-        for label, value in zip(top_labels, top_values)
-    ]
-    rising_queries = [
-        {"query": label, "value": value}
-        for label, value in zip(rising_labels, rising_values)
-    ]
     return {
         "interest_over_time": interest,
-        "top_queries": top_queries,
-        "rising_queries": rising_queries,
+        "region_data": region_data,
     }
 
 
@@ -1089,6 +1046,20 @@ _TRENDS_CACHE_TTL_SECONDS = 600
 _TRENDS_NO_DATA_TTL_SECONDS = 300
 _TRENDS_RATE_LIMIT_TTL_SECONDS = 300
 
+# Rotate between a few realistic desktop browser User-Agents so repeated
+# requests don't all look like the exact same client hammering Google, which
+# is one of the things that trips its bot detection / rate limiting.
+_TRENDS_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Edg/130.0.0.0 Safari/537.36",
+]
+
 
 def fetch_trends_data(searched_keyword, timeframe):
     cache_key = (searched_keyword.casefold(), timeframe)
@@ -1098,75 +1069,62 @@ def fetch_trends_data(searched_keyword, timeframe):
             raise cached["error"]
         return cached["data"]
 
-
     proxy_values = [
         value.strip()
         for value in os.getenv("GOOGLE_TRENDS_PROXIES", "").split(",")
         if value.strip()
     ]
-    trends_options = {
-        "hl": "en-US",
-        "tz": 300,
-        "geo": "",
-        "retries": 0,
-        "backoff_factor": 0,
-        "timeout": (10, 30),
-        "requests_args": {
-            "headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/131.0.0.0 Safari/537.36"
-                )
-            }
-        },
-    }
-    if proxy_values:
-        trends_options["proxies"] = proxy_values
-
-    pytrends = TrendReq(
-        **trends_options,
-    )
 
     last_error = None
-    for attempt in range(2):
+    attempts = 3
+    for attempt in range(attempts):
         if attempt:
-            time.sleep(3)
+            # Growing, jittered backoff so retries don't land on Google in a
+            # predictable rhythm - a flat sleep(3) is easy to keep tripping.
+            time.sleep((attempt * 3) + random.uniform(0.5, 2.0))
+
+        trends_options = {
+            "hl": "en-US",
+            "tz": 300,
+            "geo": "",
+            "retries": 0,
+            "backoff_factor": 0,
+            "timeout": (10, 30),
+            "requests_args": {
+                "headers": {"User-Agent": random.choice(_TRENDS_USER_AGENTS)}
+            },
+        }
+        if proxy_values:
+            trends_options["proxies"] = proxy_values
+
+        pytrends = TrendReq(**trends_options)
 
         try:
             # Use the exact typed term (not an auto-resolved Topic) so results match
-            # what a user sees typing the same phrase into Google Trends and pressing Enter.
-            trends_keyword = searched_keyword
-
+            # what a user sees typing the same phrase into Google Trends and pressing Enter,
+            # scoped to Pakistan since this tool only serves Pakistani businesses.
             trends_data = _query_google_trends(
-                pytrends, trends_keyword, timeframe, ""
+                pytrends, searched_keyword, timeframe, "PK"
             )
             interest_over_time = trends_data["interest_over_time"]
-            top_queries = trends_data["top_queries"]
-            rising_queries = trends_data["rising_queries"]
-            top_labels = [item["query"] for item in top_queries]
-            top_values = [item["value"] for item in top_queries]
-            rising_labels = [item["query"] for item in rising_queries]
-            rising_values = [item["value"] for item in rising_queries]
-            region_scope = "worldwide"
+            region_data = trends_data["region_data"]
             chart_labels = interest_over_time["labels"]
             chart_values = interest_over_time["values"]
 
-            result = (
-                top_labels,
-                top_values,
-                rising_labels,
-                rising_values,
-                region_scope,
-                chart_labels,
-                chart_values,
-                interest_over_time,
-                top_queries,
-                rising_queries,
+            result = {
+                "interest_over_time": interest_over_time,
+                "chart_labels": chart_labels,
+                "chart_values": chart_values,
+                "region_data": region_data,
+                "region_scope": "Pakistan",
+            }
+            has_data = bool(
+                chart_values
+                or region_data
             )
             _TRENDS_CACHE[cache_key] = {
                 "timestamp": time.time(),
-                "ttl": _TRENDS_CACHE_TTL_SECONDS if (chart_values or top_labels or rising_labels) else _TRENDS_NO_DATA_TTL_SECONDS,
+                "ttl": _TRENDS_CACHE_TTL_SECONDS if has_data else _TRENDS_NO_DATA_TTL_SECONDS,
                 "data": result,
                 "error": None,
             }
@@ -1204,22 +1162,15 @@ def api_trends(keyword):
         return jsonify({"error": "Invalid timeframe. Use 7d, 1m, or 12m."}), 400
 
     try:
-        (
-            top_labels,
-            top_values,
-            rising_labels,
-            rising_values,
-            region_scope,
-            chart_labels,
-            chart_values,
-            interest_over_time,
-            top_queries,
-            rising_queries,
-        ) = fetch_trends_data(
-            searched_keyword, timeframe
-        )
+        data = fetch_trends_data(searched_keyword, timeframe)
 
-        if not chart_values and not top_labels and not rising_labels:
+        region_data = data["region_data"]
+
+        has_data = bool(
+            data["chart_values"]
+            or region_data
+        )
+        if not has_data:
             fallback = get_fallback_trend_data()
             fallback["searched_keyword"] = searched_keyword
             fallback["timeframe"] = timeframe_key
@@ -1229,17 +1180,11 @@ def api_trends(keyword):
             "source": "live",
             "searched_keyword": searched_keyword,
             "timeframe": timeframe_key,
-            "top_labels": top_labels,
-            "rising_labels": rising_labels,
-            "labels": top_labels,
-            "top": top_values,
-            "rising": rising_values,
-            "interest_over_time": interest_over_time,
-            "top_queries": top_queries,
-            "rising_queries": rising_queries,
-            "chart_labels": chart_labels,
-            "chart_values": chart_values,
-            "region_scope": region_scope
+            "interest_over_time": data["interest_over_time"],
+            "region_data": region_data,
+            "chart_labels": data["chart_labels"],
+            "chart_values": data["chart_values"],
+            "region_scope": data["region_scope"]
         })
     except Exception as error:
         app.logger.warning("Google Trends request failed for %r: %s", searched_keyword, error)
