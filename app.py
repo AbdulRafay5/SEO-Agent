@@ -969,15 +969,6 @@ def get_fallback_trend_data():
     }
 
 
-@app.route("/api/debug-env")
-def debug_env():
-    return jsonify({
-        "has_groq": bool(os.getenv("GROQ_API_KEY")),
-        "has_pexels": bool(os.getenv("PEXELS_API_KEY")),
-        "has_proxy": bool(os.getenv("GOOGLE_TRENDS_PROXIES")),
-    })
-
-
 def normalize_trends_keyword(keyword):
     return re.sub(r"\s+", " ", keyword).strip()
 
@@ -991,24 +982,50 @@ def _format_interest_over_time(interest, keyword):
     return {"labels": labels, "values": series.tolist()}
 
 
+def _is_related_query(query, keyword):
+    keyword_terms = set(re.findall(r"[a-z0-9]+", keyword.casefold()))
+    query_terms = set(re.findall(r"[a-z0-9]+", str(query).casefold()))
+    meaningful_terms = {term for term in keyword_terms if len(term) >= 2}
+
+    if meaningful_terms & query_terms:
+        return True
+
+    return any(
+        len(keyword_term) >= 5
+        and len(query_term) >= 5
+        and (keyword_term.startswith(query_term) or query_term.startswith(keyword_term))
+        for keyword_term in meaningful_terms
+        for query_term in query_terms
+    )
+
+
 def _query_google_trends(pytrends, keyword, timeframe, geo):
     # An empty geo is Google Trends' worldwide scope. Build one payload and use
     # it for all three views so their timeframe and comparison are identical.
     pytrends.geo = geo
     pytrends.build_payload([keyword], timeframe=timeframe)
     interest = _format_interest_over_time(pytrends.interest_over_time(), keyword)
-    related = pytrends.related_queries() or {}
-
-    query_data = related.get(keyword)
-    if query_data is None:
-        query_data = next(
-            (value for key, value in related.items() if key.casefold() == keyword.casefold()),
-            next(iter(related.values()), {}),
+    try:
+        related = pytrends.related_queries() or {}
+    except Exception as error:
+        app.logger.warning(
+            "Google Trends related-query request failed for %r: %s", keyword, error
         )
+        related = {}
+
+    query_data = next(
+        (value for key, value in related.items() if key.casefold() == keyword.casefold()),
+        {},
+    )
 
     query_data = query_data or {}
     top_df = query_data.get("top")
     rising_df = query_data.get("rising")
+    if top_df is not None and not top_df.empty:
+        top_df = top_df[top_df["query"].map(lambda query: _is_related_query(query, keyword))]
+    if rising_df is not None and not rising_df.empty:
+        rising_df = rising_df[rising_df["query"].map(lambda query: _is_related_query(query, keyword))]
+
     top_slice = top_df.head(25) if top_df is not None and not top_df.empty else None
     rising_slice = rising_df.head(25) if rising_df is not None and not rising_df.empty else None
 
