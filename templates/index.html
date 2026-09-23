@@ -433,28 +433,15 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Rising Breakout Queries -->
-        <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-sada-green flex items-center gap-2">
-              <i data-lucide="flame" class="w-4 h-4"></i> Rising Breakout Queries (+%)
-            </h3>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-sada-green border border-emerald-300 dark:border-emerald-800">PyTrends Rising</span>
-          </div>
-          <div id="trends-rising-list" class="flex flex-col gap-2.5"></div>
+      <!-- Interest by Region -->
+      <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+            <i data-lucide="globe" class="w-4 h-4 text-sada-green"></i> Interest by Region (Pakistan)
+          </h3>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Top Provinces</span>
         </div>
-
-        <!-- Top In-Demand Queries -->
-        <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <i data-lucide="bar-chart-2" class="w-4 h-4 text-sada-green"></i> Top In-Demand Search Queries
-            </h3>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">High Volume</span>
-          </div>
-          <div id="trends-top-list" class="flex flex-col gap-2.5"></div>
-        </div>
+        <div id="trends-region-list" class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2"></div>
       </div>
     </section>
 
@@ -1008,8 +995,7 @@
     async function queryBackendTrends() {
       const kw = document.getElementById('trend-search-input').value.trim();
       const badge = document.getElementById('trends-source-badge');
-      const risingList = document.getElementById('trends-rising-list');
-      const topList = document.getElementById('trends-top-list');
+      const regionList = document.getElementById('trends-region-list');
       const chart = document.getElementById('trendsChart');
       const emptyState = document.getElementById('trends-empty-state');
 
@@ -1022,16 +1008,13 @@
       badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-500 animate-pulse";
 
       try {
-        const res = await fetch(`/api/trends/${encodeURIComponent(kw)}?timeframe=${selectedTrendTimeframe}`);
+        const res = await fetch(`/api/trends/${encodeURIComponent(kw)}?timeframe=${selectedTrendTimeframe}&fresh=1`);
         const data = await res.json();
 
-        const topLabels = data.top_labels || data.labels || [];
-        const risingLabels = data.rising_labels || data.labels || [];
-        let topData = data.top || [];
-        let risingData = data.rising || [];
         const chartLabels = data.chart_labels || data.interest_over_time?.labels || [];
         const chartValues = data.chart_values || data.interest_over_time?.values || [];
-        const hasData = chartLabels.length > 0 || topLabels.length > 0 || risingLabels.length > 0;
+        const regionData = data.region_data || [];
+        const hasData = chartLabels.length > 0 || regionData.length > 0;
 
         if (!hasData) {
           if (trendsChartInstance) {
@@ -1045,8 +1028,8 @@
         } else {
           chart.classList.remove('hidden');
           emptyState.classList.add('hidden');
-          badge.innerText = data.region_scope && data.region_scope.startsWith("worldwide")
-            ? "Live PyTrends: Worldwide"
+          badge.innerText = data.region_scope && data.region_scope.startsWith("Pakistan")
+            ? "Live Google Trends: Pakistan"
             : `Live PyTrends: ${data.source}`;
           badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-sada-green";
           renderTrendsChart(
@@ -1058,39 +1041,25 @@
         const noDataMessage = data.source === "rate-limited"
           ? `<p class="text-xs text-amber-600 dark:text-amber-400 py-3">Google Trends temporarily rate-limited this request. Wait a moment and try again.</p>`
           : `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
-        const noRelatedMessage = `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No related queries were available for this keyword and timeframe.</p>`;
-        risingList.innerHTML = risingLabels.length ? "" : (hasData ? noRelatedMessage : noDataMessage);
-        risingLabels.forEach((q, i) => {
-          const div = document.createElement('div');
-          div.className = "flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder text-xs hover:border-sada-green transition-all";
-          div.innerHTML = `
-            <div class="flex items-center gap-2.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-sada-green"></span>
-              <span class="font-medium text-slate-800 dark:text-slate-200">${q}</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950 text-sada-green">${risingData[i] === 'Breakout' ? 'Breakout' : '+' + (risingData[i] || 0) + '%'}</span>
-            </div>
-            <button onclick="setKeyword('${q.replace(/'/g, "\\'")}')" class="px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-sada-green hover:text-white text-sada-green font-semibold text-[11px] transition-all">
-              Select & Write &rarr;
-            </button>
-          `;
-          risingList.appendChild(div);
-        });
 
-        topList.innerHTML = topLabels.length ? "" : (hasData ? noRelatedMessage : noDataMessage);
-        topLabels.forEach((q, i) => {
+        const noRegionMessage = hasData
+          ? `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3 col-span-2">Google Trends returned no regional breakdown for this keyword and timeframe.</p>`
+          : noDataMessage;
+
+        regionList.innerHTML = regionData.length ? "" : noRegionMessage;
+        const maxRegionValue = regionData.length ? regionData[0].value : 100;
+        regionData.forEach((r) => {
+          const pct = maxRegionValue ? Math.round((r.value / maxRegionValue) * 100) : 0;
           const div = document.createElement('div');
-          div.className = "flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder text-xs hover:border-sada-green transition-all";
+          div.className = "flex items-center gap-3 py-1.5 text-xs";
           div.innerHTML = `
-            <div class="flex items-center gap-2.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-              <span class="font-medium text-slate-800 dark:text-slate-200">${q}</span>
-              <span class="text-[10px] text-sada-textMutedLight font-mono">Interest: ${topData[i] ?? 0}/100</span>
+            <span class="w-28 shrink-0 font-medium text-slate-700 dark:text-slate-300 truncate" title="${r.region}">${r.region}</span>
+            <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full bg-sada-green rounded-full" style="width:${pct}%"></div>
             </div>
-            <button onclick="setKeyword('${q.replace(/'/g, "\\'")}')" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-sada-green hover:text-white text-slate-700 dark:text-slate-300 font-semibold text-[11px] transition-all">
-              Select & Write &rarr;
-            </button>
+            <span class="w-8 text-right font-mono text-sada-textMutedLight">${r.value}</span>
           `;
-          topList.appendChild(div);
+          regionList.appendChild(div);
         });
 
         lucide.createIcons();
@@ -1102,8 +1071,8 @@
         }
         chart.classList.add('hidden');
         emptyState.classList.remove('hidden');
-        risingList.innerHTML = `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
-        topList.innerHTML = `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
+        const errMessage = `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
+        regionList.innerHTML = errMessage;
         badge.innerText = "Google Trends unavailable";
         showToast("Google Trends could not return data for this search.", "warning");
       }
