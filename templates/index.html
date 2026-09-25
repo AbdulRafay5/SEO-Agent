@@ -182,11 +182,31 @@
               </span>
             </div>
 
-            <label class="block text-xs font-semibold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mb-2">Target SEO Focus Keyword</label>
+            <label for="article-heading" class="block text-xs font-semibold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mb-2">Article Heading</label>
+            <div class="relative">
+              <input id="article-heading" type="text" placeholder="e.g. How POS Software Helps Bakeries Reduce Stock Waste"
+                     class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-4 py-3 pl-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sada-green transition-all placeholder:text-slate-400">
+              <i data-lucide="heading" class="w-4 h-4 absolute left-3.5 top-3.5 text-sada-green"></i>
+            </div>
+
+            <label for="target-keyword" class="block text-xs font-semibold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mt-4 mb-2">Primary SEO Keyword</label>
             <div class="relative">
               <input id="target-keyword" type="text" placeholder="e.g. POS Software for Bakery or Pharmacy Management System in Lahore" 
                      class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-4 py-3 pl-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sada-green transition-all placeholder:text-slate-400">
               <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3.5 text-sada-green"></i>
+            </div>
+
+            <div class="mt-4 p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg/70 border border-sada-lightBorder dark:border-sada-darkBorder">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <label class="text-xs font-bold text-sada-green">Secondary SEO Keywords</label>
+                  <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark mt-1">Choose how many times each phrase should appear.</p>
+                </div>
+                <button type="button" onclick="addSecondaryKeyword()" class="shrink-0 px-3 py-1.5 rounded-lg border border-sada-green/60 text-sada-green hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-[11px] font-bold flex items-center gap-1.5">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add keyword
+                </button>
+              </div>
+              <div id="secondary-keyword-list" class="space-y-2"></div>
             </div>
 
             <!-- TRENDING DEMAND QUICK-BAR -->
@@ -565,6 +585,7 @@
     let rawBlogContent = "";
     let selectedH1Title = "";
     let blogBrief = { purpose: "", tone: "professional", questions: [] };
+    let secondaryKeywordId = 0;
     let cooldownTimer = null;
     let trendsChartInstance = null;
     let pendingConfirmAction = null;
@@ -713,6 +734,44 @@
       input.classList.add('ring-2', 'ring-sada-green');
       setTimeout(() => input.classList.remove('ring-2', 'ring-sada-green'), 1000);
       showToast(`Selected "${kw}"`);
+    }
+
+    function addSecondaryKeyword() {
+      const list = document.getElementById('secondary-keyword-list');
+      const id = secondaryKeywordId++;
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2';
+      row.dataset.secondaryRow = id;
+      row.innerHTML = `
+        <input type="text" data-secondary-keyword placeholder="e.g. inventory management" class="min-w-0 flex-1 bg-white dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sada-green">
+        <select data-secondary-count class="w-24 bg-white dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sada-green" aria-label="Secondary keyword repetitions">
+          <option value="1">1 time</option>
+          <option value="2">2 times</option>
+          <option value="3">3 times</option>
+          <option value="4">4 times</option>
+          <option value="5">5 times</option>
+        </select>
+        <button type="button" onclick="removeSecondaryKeyword(${id})" class="p-2 text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-rose-500" title="Remove keyword">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      `;
+      list.appendChild(row);
+      lucide.createIcons();
+      row.querySelector('[data-secondary-keyword]').focus();
+    }
+
+    function removeSecondaryKeyword(id) {
+      const row = document.querySelector(`[data-secondary-row="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function getSecondaryKeywords() {
+      return [...document.querySelectorAll('[data-secondary-row]')]
+        .map(row => ({
+          keyword: row.querySelector('[data-secondary-keyword]').value.trim(),
+          count: Number(row.querySelector('[data-secondary-count]').value)
+        }))
+        .filter(item => item.keyword);
     }
 
     function updateHeaderCounters() {
@@ -911,7 +970,11 @@
       loader.classList.remove('hidden');
 
       const params = new URLSearchParams();
-      if (selectedH1Title) params.set('title', selectedH1Title);
+      const articleHeading = document.getElementById('article-heading').value.trim();
+      if (articleHeading || selectedH1Title) params.set('title', articleHeading || selectedH1Title);
+      params.set('primary_keyword', chosenKeyword);
+      const secondaryKeywords = getSecondaryKeywords();
+      if (secondaryKeywords.length) params.set('secondary_keywords', JSON.stringify(secondaryKeywords));
       if (blogBrief.purpose) params.set('purpose', blogBrief.purpose);
       if (blogBrief.tone) params.set('tone', blogBrief.tone);
       if (blogBrief.questions.length) params.set('questions', blogBrief.questions.join('\n'));
