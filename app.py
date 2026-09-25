@@ -9,6 +9,7 @@ import tempfile
 import base64
 import difflib
 import requests
+from google import genai
 from groq import Groq
 from pytrends.request import TrendReq
 from keywords import all_keywords, keyword_links, CONTACT_URL
@@ -35,13 +36,41 @@ DRAFTS_REPO_DIR = "drafts"  # folder inside the GitHub datastore repo
 # Key resolution order: GitHub settings.json (editable without a redeploy,
 # and doesn't depend on Vercel's env vars actually being picked up) -> real
 # env var -> local .env file. This fixes the "Vercel isn't picking up
-# GROQ_API_KEY/PEXELS_API_KEY" issue: as long as GITHUB_REPO/GITHUB_TOKEN
+# GROQ_API_KEY/PEXELS_API_KEY" issue: as long as GITHUB_REPO/GITHUB_TOKEN 
 # are set, the actual API keys can live in the repo's settings.json instead
 # and are re-read on every cold start.
 _repo_settings = github_store.load_settings()
+gemini_key = os.getenv("GEMINI_API_KEY") or dotenv_settings.get("GEMINI_API_KEY")
 groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
 pexels_key = _repo_settings.get("pexelsApiKey") or os.getenv("PEXELS_API_KEY") or dotenv_settings.get("PEXELS_API_KEY")
+gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 client = Groq(api_key=groq_key)
+GEMINI_MODEL = "gemini-2.5-flash"
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+
+def generate_ai_text(prompt, max_tokens):
+    """Generate with Gemini first and use Groq only when Gemini is unavailable."""
+    if gemini_client:
+        try:
+            response = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config={"max_output_tokens": max_tokens},
+            )
+            text = (response.text or "").strip()
+            if text:
+                return text
+            raise RuntimeError("Gemini returned an empty response")
+        except Exception:
+            app.logger.exception("Gemini AI request failed; falling back to Groq")
+
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
 def get_pexels_image(query):
@@ -1279,13 +1308,7 @@ def api_titles(keyword):
 
     try:
         prompt = build_title_prompt(keyword)
-        response = client.chat.completions.create(
-            model="qwen/qwen3.8-27b",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1200
-        )
-        message = response.choices[0].message
-        raw_text = (message.content or getattr(message, "reasoning", "") or "").strip()
+        raw_text = generate_ai_text(prompt, max_tokens=1200)
 
         ai_titles = extract_ai_title_candidates(raw_text)
         titles = extract_title_options(raw_text, keyword)
@@ -1331,12 +1354,7 @@ def api_generate(keyword):
         raw_text = ""
 
         for attempt in range(3):
-            response = client.chat.completions.create(
-                model="qwen/qwen3.8-27b",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4000
-            )
-            raw_text = response.choices[0].message.content.strip()
+            raw_text = generate_ai_text(prompt, max_tokens=4000)
             body_preview = re.sub(r"META_TITLE:.*\n?", "", raw_text)
             body_preview = re.sub(r"META_DESCRIPTION:.*\n?", "", body_preview).strip()
             body_preview = clean_keyword_artifacts(body_preview, keyword)
