@@ -2,6 +2,7 @@ Flask
 gunicorn
 python-dotenv
 requests
+google-genai
 groq
 pytrends
 Markdown
