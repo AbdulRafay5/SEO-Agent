@@ -8,6 +8,7 @@ import time
 import tempfile
 import base64
 import difflib
+import json
 import requests
 from google import genai
 from groq import Groq
@@ -42,11 +43,14 @@ DRAFTS_REPO_DIR = "drafts"  # folder inside the GitHub datastore repo
 _repo_settings = github_store.load_settings()
 gemini_key = os.getenv("GEMINI_API_KEY") or dotenv_settings.get("GEMINI_API_KEY")
 groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
+qwen_key = os.getenv("QWEN_API_KEY") or dotenv_settings.get("QWEN_API_KEY")
 pexels_key = _repo_settings.get("pexelsApiKey") or os.getenv("PEXELS_API_KEY") or dotenv_settings.get("PEXELS_API_KEY")
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 client = Groq(api_key=groq_key)
+qwen_client = Groq(api_key=qwen_key) if qwen_key else None
 GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "openai/gpt-oss-120b"
+QWEN_TITLE_MODEL = "qwen/qwen3.8-27b"
 
 
 def generate_ai_text(prompt, max_tokens):
@@ -71,6 +75,25 @@ def generate_ai_text(prompt, max_tokens):
         max_tokens=max_tokens,
     )
     return (response.choices[0].message.content or "").strip()
+
+
+def generate_title_text(prompt, max_tokens):
+    if qwen_client:
+        try:
+            response = qwen_client.chat.completions.create(
+                model=QWEN_TITLE_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+            )
+            message = response.choices[0].message
+            text = (message.content or getattr(message, "reasoning", "") or "").strip()
+            if text:
+                return text
+            raise RuntimeError("Qwen returned an empty response")
+        except Exception:
+            app.logger.exception("Qwen title request failed; falling back to the primary AI provider")
+
+    return generate_ai_text(prompt, max_tokens)
 
 
 def get_pexels_image(query):
@@ -408,371 +431,103 @@ def keyword_density(text, keyword):
     return (keyword_count / word_count) * 1000 if word_count else 0
 
 
-def build_title_prompt_legacy(chosen_keyword):
-    return f"""You are the SEO title generation engine for ExampleBrand.
-
-ExampleBrand is a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform.
-
-ExampleBrand helps businesses with:
-- POS billing
-- Digital invoicing
-- Inventory and stock management
-- Purchases and vendors
-- Sales and customers
-- Udhaar and credit management
-- Expenses
-- Profit and loss
-- Analytics and reporting
-- Multi-branch management
-- Multi-user access
-- Attendance and payroll
-- Barcode scanning and generation
-- Low-stock alerts
-- Batch and expiry tracking
-- Quotations
-- Loyalty programs
-- CRM
-- E-commerce integrations
-- API and custom integrations
-- FBR-related POS/invoicing integration where applicable
-
-ExampleBrand is designed for businesses including:
-- Pharmacies
-- Restaurants
-- Grocery stores
-- Bakeries
-- Clothing stores
-- Salons
-- Gyms
-- Electronics businesses
-- Stationery and bookstores
-- Auto spare-parts businesses
-- Wholesalers
-- Retailers
-- SMEs
-
-USER'S SEARCH KEYWORD:
-{chosen_keyword}
-
-==================================================
-MOST IMPORTANT RULE: SEARCH INTENT COMES FIRST
-==================================================
-
-The user's keyword is the PRIMARY SUBJECT of every title.
-
-Your job is to create titles that directly answer, explore, or expand on what the user is actually searching for.
-
-DO NOT change the subject of the keyword simply to create a different headline angle.
-
-The keyword and its search intent must remain central to ALL 6 titles.
-
-For example, if the keyword is:
-
-"POS software for grocery store"
-
-All titles must remain clearly about POS software for grocery stores.
-
-Good related topics:
-- POS software for grocery stores
-- grocery store POS features
-- choosing POS software for a grocery store
-- benefits of POS software for grocery stores
-- grocery inventory and POS management
-- implementing POS software in a grocery store
-
-Bad unrelated topics:
-- digital invoicing for small businesses
-- loyalty programs for restaurants
-- multi-branch management for franchises
-- pharmacy inventory management
-- CRM for restaurants
-
-Those are different search intents and MUST NOT be used.
-
-==================================================
-PRESERVE KEYWORD CONTEXT
-==================================================
-
-The keyword may contain:
-- an industry
-- business type
-- product
-- service
-- problem
-- location
-- audience
-- use case
-- geographic intent
-
-Preserve all important context.
-
-If the keyword contains a specific industry, every title must remain relevant to that industry.
-
-If the keyword contains a specific city, every title must preserve that city unless doing so would make the title grammatically unnatural.
-
-If the keyword contains a specific business type, do not replace it with a generic business category.
-
-Examples:
-
-Keyword:
-"Pharmacy Management System in Lahore"
-
-Correct:
-- Best Pharmacy Management System in Lahore: What to Look For
-- How to Choose a Pharmacy Management System in Lahore
-- Essential Features of a Pharmacy Management System in Lahore
-- Pharmacy Management System in Lahore: A Practical Guide
-- Common Pharmacy Management Challenges in Lahore
-- ExampleBrand for Pharmacy Management in Lahore
-
-Incorrect:
-- Best POS Software for Pakistani Restaurants
-- 7 Benefits of Digital Invoicing for Small Businesses
-- Loyalty and CRM Tips for Karachi Restaurants
-
---------------------------------------------------
-
-Keyword:
-"POS Software for Grocery Store"
-
-Correct:
-- Best POS Software for Grocery Stores: Key Features to Look For
-- How to Choose POS Software for a Grocery Store
-- 7 Essential POS Features Every Grocery Store Needs
-- POS Software for Grocery Stores: A Practical Guide
-- How POS Software Helps Grocery Stores Manage Sales and Stock
-- ExampleBrand POS for Grocery Stores: Features and Benefits
-
-Incorrect:
-- 7 Proven Benefits of Digital Invoicing for Small Businesses
-- Expert Tips for Loyalty and CRM
-- Multi-Branch Management for Pakistani Franchises
-- Pharmacy Inventory Mistakes
-- POS Software for Lahore Retailers
-
---------------------------------------------------
-
-Keyword:
-"Inventory Management Software for Pharmacies"
-
-Correct:
-- Best Inventory Management Software for Pharmacies
-- How to Choose Inventory Management Software for a Pharmacy
-- 7 Essential Inventory Features Pharmacies Need
-- Inventory Management Software for Pharmacies: A Practical Guide
-- Common Pharmacy Inventory Mistakes and How to Avoid Them
-- How ExampleBrand Helps Pharmacies Manage Inventory
-
-Incorrect:
-- Ultimate Guide to ExampleBrand POS for Pakistani Retailers
-- Loyalty Programs for Restaurants
-- Multi-Branch Management for Franchises
-
-==================================================
-ExampleBrand BRAND RULE
-==================================================
-
-ExampleBrand is the brand being promoted, but ExampleBrand is NOT the primary search intent unless the keyword specifically asks about ExampleBrand.
-
-DO NOT force "ExampleBrand" into every title.
-
-Some titles may mention ExampleBrand naturally, while others can focus on the user's actual search query.
-
-The keyword and search intent always come before brand promotion.
-
-For example:
-
-Keyword:
-"POS software for grocery store"
-
-Good:
-- Best POS Software for Grocery Stores: Key Features to Look For
-- How to Choose POS Software for a Grocery Store
-- 7 Essential POS Features Every Grocery Store Needs
-- POS Software for Grocery Stores: A Practical Guide
-- How POS Software Helps Grocery Stores Manage Sales and Stock
-- ExampleBrand POS for Grocery Stores: Features and Benefits
-
-==================================================
-TITLE VARIETY
-==================================================
-
-Generate exactly 6 titles.
-
-The titles must be meaningfully different from each other, but they must ALL remain within the same search intent.
-
-Possible angles include:
-- Practical guide
-- Benefits
-- Features
-- How-to
-- Implementation
-- Problems and solutions
-- Mistakes to avoid
-- Business growth
-- Buying guide
-- Comparison
-- Industry-specific advice
-
-Only use an angle if it genuinely applies to the keyword.
-
-DO NOT force unrelated angles just to make the six titles different.
-
-For example, if the keyword is about pharmacy inventory software, do not create a restaurant loyalty-program title simply because "loyalty" is a ExampleBrand feature.
-
-==================================================
-LOCATION RULE
-==================================================
-
-If the keyword contains a city, province, or location, preserve it.
-
-Examples:
-
-"POS Software Karachi"
-→ Keep Karachi.
-
-"Pharmacy Management System in Lahore"
-→ Keep Lahore.
-
-"POS Software for Grocery Store"
-→ Do NOT randomly add Karachi, Lahore, Islamabad, Multan, or another city.
-
-Do not replace a specific city with "Pakistan" unless the keyword itself has Pakistan-wide intent.
-
-Do not invent a location.
-
-==================================================
-NATURAL TITLE RULE
-==================================================
-
-Titles must sound like they were written by a professional human SEO writer.
-
-Avoid:
-- keyword stuffing
-- keyword repetition
-- awkward exact-match phrases
-- unnecessary punctuation
-- long titles
-- generic AI wording
-- exaggerated claims
-- unnatural promotional language
-- repeating the same sentence structure
-
-Bad:
-"Best Pharmacy Management System in Lahore for Pharmacies in Lahore"
-
-Good:
-"Best Pharmacy Management Systems for Pharmacies in Lahore"
-
-Bad:
-"POS Software for Grocery Store: The Best POS Software for Grocery Stores"
-
-Good:
-"How to Choose POS Software for a Grocery Store"
-
-==================================================
-TITLE LENGTH
-==================================================
-
-Prefer approximately 8–14 words.
-
-Keep titles concise and readable.
-
-Do not make titles unnecessarily long just to include keywords.
-
-A shorter natural title is better than a longer keyword-stuffed title.
-
-==================================================
-SEO RULES
-==================================================
-
-1. Generate exactly 6 titles.
-2. Every title must be directly relevant to the user's keyword.
-3. Keep the user's search intent as the central topic.
-4. Preserve industry, business type, product, service and location context.
-5. Use the keyword naturally where possible.
-6. Do not force exact-match wording when it makes the title awkward.
-7. Do not change the subject to another ExampleBrand feature.
-8. Do not introduce unrelated industries.
-9. Do not introduce unrelated cities.
-10. Do not introduce unrelated services.
-11. Do not automatically add "Pakistan".
-12. Do not automatically add "2026".
-13. Do not automatically add "Best".
-14. Do not automatically add "Ultimate".
-15. Do not automatically add numbers.
-16. Use numbers only when genuinely useful.
-17. Use strong words such as Best, Practical, Proven, Expert, Essential, Complete or Ultimate only when appropriate.
-18. Never make unsupported claims.
-19. Do not imply that ExampleBrand is objectively the best unless the wording clearly presents it as a brand/product title rather than an unsupported factual claim.
-20. Do not create six minor variations of the same title.
-21. Do not create six completely unrelated topics.
-22. Brand promotion must never override search intent.
-
-==================================================
-FINAL RELEVANCE CHECK
-==================================================
-
-Before returning each title, silently check:
-
-1. Is this title directly related to the user's keyword?
-2. Does it preserve the main search intent?
-3. Does it preserve the industry or business type?
-4. Does it preserve the location if one exists?
-5. Could someone searching the exact keyword reasonably click this title expecting relevant information?
-6. Does the title stay on the same subject instead of switching to another ExampleBrand feature?
-
-If the answer to ANY of these is NO, rewrite the title.
-
-==================================================
-FINAL OUTPUT
-==================================================
-
-Return ONLY the six titles.
-
-Use exactly this format:
-
-1. Title
-2. Title
-3. Title
-4. Title
-5. Title
-6. Title
-
-Do not include:
-- explanations
-- commentary
-- bullet points
-- quotation marks
-- markdown bold
-- "Option #"
-- "Click to lock H1"
-- meta titles
-- meta descriptions
-- article content
-"""
+def enforce_secondary_keywords(body, secondary_keywords):
+    paragraphs = body.split("\n\n")
+    for item in secondary_keywords:
+        keyword = item["keyword"]
+        target_count = item["count"]
+        current_count = body.lower().count(keyword.lower())
+        needed = max(0, target_count - current_count)
+        if not needed:
+            continue
+
+        for index, paragraph in enumerate(paragraphs):
+            if needed <= 0:
+                break
+            words = paragraph.split()
+            if len(words) < 10 or paragraph.lstrip().startswith(("#", "![", "- ", "* ", "> ", "|")):
+                continue
+            sentence = f"This also makes {keyword} easier to evaluate during the workflow."
+            paragraphs[index] = paragraph.rstrip() + " " + sentence
+            needed -= 1
+
+        body = "\n\n".join(paragraphs)
+        if needed > 0:
+            fallback_sentences = " ".join(
+                f"Businesses should also review {keyword} when planning this workflow."
+                for _ in range(needed)
+            )
+            body = body.rstrip() + "\n\n" + fallback_sentences
+
+    return body
 
 
 def build_title_prompt(chosen_keyword):
-    return f"""You are an experienced SEO editor and headline writer for ExampleBrand, a Pakistani business software company.
+    return f"""You are a Lead SEO Content Strategist and Senior Copywriter specializing in Pakistani commerce, B2B software, tax compliance, and retail ecosystems.
 
-The current date is {CURRENT_DATE}. Use 2026 when a year is relevant. Do not use 2024 or another outdated year unless the keyword explicitly refers to a historical year.
+You write headlines for ExampleBrand (a Pakistani POS, ERP, invoicing, inventory, and tax compliance platform).
 
-Create exactly 6 engaging, publish-ready blog title options for this search keyword:
+USER SEARCH QUERY:
+"{chosen_keyword}"
 
-{chosen_keyword}
+CURRENT CONTEXT:
+Reference year is 2026. Current date: {CURRENT_DATE}.
 
-Understand the keyword before writing. Make the titles feel useful, specific, and appealing to a real person who would search for this topic. Explore different natural angles such as a practical guide, key features, benefits, buying advice, common problems, implementation, comparison, or business outcomes. Choose angles that genuinely fit the keyword rather than forcing a formula. Prefer a concrete business outcome or decision over vague phrases such as "From Ecommerce to Retail" or "Automate Your Business" on their own.
+==================================================
+PHASE 1: KNOWLEDGE & CONTEXT EXPANSION (CRUCIAL)
+==================================================
+Before generating headlines, internally decode the query's business, legal, and operational reality:
 
-Keep the keyword's main subject, audience, industry, and location clear. You may rephrase the wording slightly when that produces a more natural title, but do not turn the topic into a different product, industry, city, or search intent. Use ExampleBrand in one or two titles only when it fits naturally; the keyword's topic comes first.
+1. PAKISTANI REGULATORY & TAX ENTITIES:
+   - "SRB" = Sindh Revenue Board (Sales tax on services, POS integration rules, restaurants, hotels, beauty parlors, IT services, provincial compliance in Sindh/Karachi).
+   - "PRA" = Punjab Revenue Authority (Sales tax on services in Punjab/Lahore/Rawalpindi/Multan).
+   - "BRA" = Balochistan Revenue Authority.
+   - "KPRA" = Khyber Pakhtunkhwa Revenue Authority.
+   - "FBR" = Federal Board of Revenue (Tier-1 retail POS integration, STRN, income tax, sales tax on goods across Pakistan).
+   Recognize these abbreviations immediately and grasp the practical compliance, audit, invoicing, and penalty risks business owners face regarding them.
 
-Grammar rule for exact-match keywords: do not blindly place words such as "Common", "Right", or "How to Choose the Right" directly before a keyword that already begins with "Best". Rewrite the title naturally, for example "Common Challenges When Choosing POS Software for Shopify and WooCommerce Stores" or "How to Choose POS Software for Shopify and WooCommerce Stores in Pakistan".
+2. INDUSTRY & OPERATIONAL CONTEXT:
+   - "Pharmacy / Medical Store" = Batch numbers, expiry tracking, formula search, distributor credit, fast OTC billing.
+   - "Restaurant / Cafe" = KOT (Kitchen Order Tickets), table turnaround, recipe/ingredient costing, recipe waste, SRB/PRA integration.
+   - "Supermarket / Grocery" = Barcode speed, high-volume checkout, bulk distributor purchase orders, dead inventory.
+   - "Wholesaler / Distributor" = Ledger/Khata, bulk discounts, credit recovery, multi-warehouse stock.
 
-Aim for concise titles, generally 8-14 words, with varied sentence structures. Make them sound human and distinct from one another. Use numbers, power words, years, or a colon only when they improve the title. Avoid generic filler, awkward exact-match repetition, exaggerated claims, vague slogans, and near-duplicate titles. For POS and e-commerce topics, name the practical decision, workflow, integration, inventory problem, or evaluation criteria the article will address.
+==================================================
+PHASE 2: COPYWRITING & HEADLINE STRATEGY
+==================================================
+Generate exactly 6 distinct, eye-catching, high-CTR blog headlines.
 
-Before returning the list, silently check that every title is relevant to the keyword and that the six options offer genuinely different reasons to click.
+Write in natural, confident, and professional English that real Pakistani founders, shopkeepers, accountants, and executives will click.
 
-Return only this format, with no explanations or quotation marks:
+DO NOT use identical sentence structures across your options. Use 6 completely different editorial angles:
+
+1. The Compliance / Risk / Legal Angle:
+   Focus on regulations, audit readiness, penalties, registration steps, or staying compliant (especially critical for SRB, PRA, FBR, tax queries).
+2. The Bottom-Line / Financial Angle:
+   Focus on margins, profit leaks, tax deductions, cash flow, preventing theft, or cost calculations.
+3. The Buyer’s Checklist / Evaluation Angle:
+   Focus on what to verify, ask, or inspect before buying software or choosing a system.
+4. The Operational / Pain-Point Angle:
+   Tackle daily operational friction (e.g., checkout bottlenecks, manual khata errors, stockout headaches, billing disputes).
+5. The Modernization / Strategic Growth Angle:
+   Moving away from obsolete paper/Excel methods, automating workflows, or scaling branches.
+6. The Pragmatic Software / Solution Angle:
+   A clean, practical showcase of how modern software (naturally weaving in ExampleBrand where relevant) solves this exact search need.
+
+==================================================
+STRICT EDITORIAL RULES
+==================================================
+- Preserve the exact intent: If the query is about "SRB", the articles must genuinely discuss Sindh Revenue Board issues (tax rates, POS integration, filing, software requirements, service tax rules).
+- Retain specific locations: If Karachi, Rawalpindi, Lahore, or Sindh is in the search query, keep it. Do not invent cities if none are specified.
+- Natural flow: Do not awkwardly force exact-match keywords if they break grammar. Write fluid English.
+- Avoid clickbait fluff: No empty buzzwords ("Skyrocket your revenue", "Revolutionize your world"). Make the value proposition clear and grounded in Pakistani business realities.
+- Target Length: 7 to 14 words per title.
+
+==================================================
+OUTPUT FORMAT
+==================================================
+Output ONLY the 6 titles as a numbered list. Do not include markdown bolding, intro chatter, quotation marks, or labels like "Option #" or "H1".
+
 1. Title
 2. Title
 3. Title
@@ -784,12 +539,12 @@ Return only this format, with no explanations or quotation marks:
 def get_fallback_titles(keyword):
     keyword = keyword.strip()
     return [
-        f"{keyword}: A Practical Guide for Pakistani Businesses",
-        f"How to Choose the Right {keyword}",
-        f"{keyword}: Key Features, Benefits, and Use Cases",
-        f"Common {keyword} Challenges and How to Solve Them",
-        f"How {keyword} Can Improve Daily Business Operations",
-        f"{keyword}: Questions to Ask Before You Start",
+        f"A Practical Guide to {keyword} for Pakistani Business Owners",
+        f"Key Requirements and Compliance Rules for {keyword}",
+        f"Common Costly Mistakes Businesses Make with {keyword}",
+        f"What to Check Before Setting Up {keyword}",
+        f"How to Automate and Streamline {keyword} in 2026",
+        f"Managing {keyword} Efficiently with ExampleBrand",
     ]
 
 
@@ -808,16 +563,36 @@ def extract_title_options(raw_text, keyword):
 
 def extract_ai_title_candidates(raw_text):
     candidates = []
+    noise_patterns = [
+        r"^option\s*#?\d+",
+        r"^click\s+to\s+lock",
+        r"^h1",
+        r"^meta\s+title",
+        r"^angle\s*\d+",
+    ]
+
     for line in raw_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        if any(re.search(pat, line, re.IGNORECASE) for pat in noise_patterns):
+            continue
+
         if not re.match(r"^\s*(?:\d+\s*[.)]|[-*])\s+", line):
             continue
+
         cleaned = re.sub(r"^\s*(?:\d+\s*[.)]|[-*])\s*", "", line).strip()
-        cleaned = cleaned.strip('"\'`')
+        cleaned = cleaned.strip('"\'`*#')
+
         if len(cleaned.split()) < 4 or not re.search(r"[A-Za-z]", cleaned):
             continue
+
         if cleaned.lower() in {title.lower() for title in candidates}:
             continue
+
         candidates.append(cleaned)
+
     return candidates
 
 
@@ -840,7 +615,6 @@ def _locate_title_end(text, title):
         return match.a + match.size
 
     return None
-
 
 def _split_heading_from_intro(heading_text, title):
     """Split a raw H1 line into (title, introduction) so a run-on line from
@@ -889,7 +663,7 @@ def ensure_h1_title(body, chosen_title=None):
     return f"# {final_title}\n\n{introduction}" if introduction else f"# {final_title}"
 
 
-def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional"):
+def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None):
     internal_link = keyword_links.get(chosen_keyword, "https://example.com/pricing-plan/")
     extra_links = get_extra_internal_link_pool(chosen_keyword)
     extra_links_text = "\n".join(f"- {url}" for url in extra_links) if extra_links else "(none available)"
@@ -907,6 +681,18 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
         "informal": "Use a relaxed, friendly tone with simple language and relatable examples. Keep the advice credible and focused; do not add fictional personal stories or exaggerated claims.",
     }
     tone_context = tone_instructions.get(blog_tone, tone_instructions["professional"])
+    secondary_keywords = secondary_keywords or []
+    secondary_context = ""
+    if secondary_keywords:
+        secondary_lines = "\n".join(
+            f'- Use the secondary keyword "{item["keyword"]}" exactly {item["count"]} time(s) in natural, relevant body prose.'
+            for item in secondary_keywords
+        )
+        secondary_context = f"""
+
+SECONDARY KEYWORD RULES:
+{secondary_lines}
+Do not put secondary keywords in headings, metadata, image markers, diagram code, or unrelated sentences. Do not repeat them back-to-back or force awkward wording."""
 
     return f"""You are an expert SEO content writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform.
 
@@ -935,6 +721,7 @@ The H1 must be a practical, specific article title that tells the reader what de
 
 TOPIC AND ORIGINALITY RULE:
 Every section must directly serve "{chosen_keyword}" and the stated blog purpose. Use concrete examples, decisions, workflows, and tradeoffs that fit this topic. Do not reuse a generic sequence of headings or repeat the same explanation in different words.
+{secondary_context}
 
 ANTI-HALLUCINATION RULE:
 Never invent specific statistics, prices, customer counts, named competitors, awards, or certifications. Where you reference a regulation, authority, or process, describe it in general, accurate terms (e.g. "SRB's official services include...") rather than fabricating exact figures. You may factually describe ExampleBrand's real features: POS billing, digital invoicing, inventory management, purchases, vendors, sales, customers, Udhaar/credit management, expenses, profit and loss, analytics, multi-branch management, multi-user access, attendance, payroll, barcode scanning, low-stock alerts, batch/expiry tracking, quotations, loyalty programs, CRM, e-commerce integrations, and APIs.
@@ -1308,7 +1095,7 @@ def api_titles(keyword):
 
     try:
         prompt = build_title_prompt(keyword)
-        raw_text = generate_ai_text(prompt, max_tokens=1200)
+        raw_text = generate_title_text(prompt, max_tokens=1200)
 
         ai_titles = extract_ai_title_candidates(raw_text)
         titles = extract_title_options(raw_text, keyword)
@@ -1332,11 +1119,28 @@ def api_titles(keyword):
 
 @app.route("/api/generate/<path:keyword>")
 def api_generate(keyword):
-    keyword = correct_keyword_input(keyword)
+    keyword = request.args.get("primary_keyword", keyword).strip()
     chosen_title = request.args.get("title")
     blog_purpose = request.args.get("purpose", "")
     audience_questions = request.args.get("questions", "")
     blog_tone = request.args.get("tone", "professional")
+    try:
+        secondary_keywords = json.loads(request.args.get("secondary_keywords", "[]"))
+    except json.JSONDecodeError:
+        secondary_keywords = []
+    normalized_secondary_keywords = []
+    for item in secondary_keywords:
+        if not isinstance(item, dict) or not str(item.get("keyword", "")).strip():
+            continue
+        try:
+            count = int(item.get("count", 1))
+        except (TypeError, ValueError):
+            count = 1
+        normalized_secondary_keywords.append({
+            "keyword": str(item["keyword"]).strip(),
+            "count": max(1, min(5, count)),
+        })
+    secondary_keywords = normalized_secondary_keywords
 
     if os.path.exists(LAST_GEN_FILE):
         with open(LAST_GEN_FILE, "r") as f:
@@ -1350,7 +1154,7 @@ def api_generate(keyword):
         return jsonify({"error": f"Please wait {wait_left} more seconds before generating another blog."}), 429
 
     try:
-        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone)
+        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords)
         raw_text = ""
 
         for attempt in range(3):
@@ -1397,6 +1201,7 @@ def api_generate(keyword):
         body = ensure_h1_title(body, chosen_title)
         body = clean_keyword_artifacts(body, keyword)
         body = enforce_keyword_density(body, keyword)
+        body = enforce_secondary_keywords(body, secondary_keywords)
         body = clean_keyword_artifacts(body, keyword)
 
         word_count = len(body.split())
@@ -1431,6 +1236,10 @@ def api_generate(keyword):
             "content": body,
             "word_count": word_count,
             "keyword_count": keyword_count,
+            "secondary_keyword_counts": {
+                item["keyword"]: body.lower().count(item["keyword"].lower())
+                for item in secondary_keywords
+            },
             "rate_per_1000": rate_per_1000,
             "photo_count": photo_count,
             "diagram_count": diagram_count,
