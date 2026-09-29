@@ -1,1453 +1,1838 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ExampleBrand — Autonomous B2B SEO & Title Studio</title>
-  
-  <!-- Typography: Plus Jakarta Sans & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Plus Jakarta Sans', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            sada: {
-              green: '#00A86B',
-              greenHover: '#008f5a',
-              emerald: '#10B981',
-              mint: '#D1FAE5',
-              darkBg: '#080C15',
-              darkSurface: '#0E1626',
-              darkCard: '#131F35',
-              darkBorder: '#1E2D4A',
-              lightBg: '#F8FAFC',
-              lightSurface: '#FFFFFF',
-              lightCard: '#FFFFFF',
-              lightBorder: '#E2E8F0',
-              textDark: '#F8FAFC',
-              textMutedDark: '#94A3B8',
-              textLight: '#0F172A',
-              textMutedLight: '#64748B'
-            }
-          },
-          boxShadow: {
-            'sada': '0 4px 25px -2px rgba(0, 168, 107, 0.25)',
-            'sada-card': '0 10px 30px -5px rgba(15, 23, 42, 0.1)',
-            'sada-glow': '0 0 35px -5px rgba(0, 168, 107, 0.3)'
-          }
-        }
-      }
-    }
-  </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExampleBrand — SEO Studio</title>
+<meta name="description" content="ExampleBrand SEO Studio: AI-powered blog generation for Pakistani businesses.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <!-- External Visual Libraries: Lucide Icons, Marked.js & Chart.js -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ═══════════════════════════════
+   TOKENS
+═══════════════════════════════ */
+:root {
+  --bg:#f6f4ef; --surface:#ffffff; --surface-2:#faf8f3; --surface-3:#ffffff; --border:#e3ded3;
+  --text:#1d2420; --muted:#5d6660;
+  --accent:#1f7a5c; --accent-hover:#17624a; --accent-soft:#e2f1ea;
+  --warn:#a86a10; --warn-soft:#fbf0dc; --danger:#b4443a; --danger-soft:#fce8e6;
+  --on-accent:#ffffff;
+  --radius:10px; --radius-lg:14px;
+  --shadow:0 1px 2px rgba(20,30,25,.05),0 4px 16px rgba(20,30,25,.04);
+  --font:"DM Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --sb:232px; --ease:cubic-bezier(.2,.7,.2,1);
+}
+[data-theme="dark"] {
+  --bg:#101412; --surface:#171c1a; --surface-2:#1f2522; --surface-3:#272f2c; --border:rgba(255,255,255,.09);
+  --text:#e6eae7; --muted:#a2aca6;
+  --accent:#3fae88; --accent-hover:#59c39f; --accent-soft:#1b352b;
+  --warn:#e0a84a; --warn-soft:#3a2f18; --danger:#e07a70; --danger-soft:#2f1e1c;
+  --on-accent:#0c1712;
+  --shadow:none;
+}
 
-  <style>
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    .dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
-    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+/* ═══════════════════════════════
+   RESET + BASE
+═══════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font);font-size:15px;line-height:1.6;color:var(--text);background:var(--bg)}
+body{display:flex;flex-direction:column;transition:background 200ms var(--ease),color 200ms var(--ease)}
+button{font-family:var(--font);cursor:pointer}
+input,select,textarea{font-family:var(--font)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:9px}
 
-    /* Article Typography */
-    .prose-rendered h1 { font-size: 1.95rem; font-weight: 800; margin-top: 1.6rem; margin-bottom: 0.85rem; color: #00A86B; letter-spacing: -0.025em; line-height: 1.25; }
-    .prose-rendered > h1 { display: block; color: #34D399; font-size: 2.15rem; font-weight: 800; line-height: 1.2; margin-top: 0; margin-bottom: 1.35rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(52, 211, 153, 0.35); }
-    .prose-rendered h2 { font-size: 1.4rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.65rem; border-bottom: 1.5px solid rgba(0, 168, 107, 0.25); padding-bottom: 0.45rem; color: #E2E8F0; }
-    .dark .prose-rendered h2 { color: #F1F5F9; }
-    .prose-rendered h3 { font-size: 1.18rem; font-weight: 600; margin-top: 1.4rem; margin-bottom: 0.4rem; color: #10B981; }
-    .prose-rendered p { margin-top: 0.9rem; margin-bottom: 0.9rem; line-height: 1.85; font-size: 0.96rem; }
-    .prose-rendered ul { list-style-type: disc; padding-left: 1.6rem; margin: 0.85rem 0; }
-    .prose-rendered li { margin: 0.4rem 0; line-height: 1.7; }
-    .prose-rendered a { color: #00A86B; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
-    .prose-rendered code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; padding: 0.15rem 0.4rem; border-radius: 0.35rem; }
-    .dark .prose-rendered code { background-color: #1E293B; color: #6EE7B7; }
-    .light .prose-rendered code { background-color: #F1F5F9; color: #047857; }
+/* ═══════════════════════════════
+   APP SHELL
+═══════════════════════════════ */
+.shell{display:flex;height:100dvh;overflow:hidden}
 
-    /* Tables */
-    .prose-rendered table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.88rem; }
-    .prose-rendered th { background: rgba(0, 168, 107, 0.12); padding: 0.65rem 0.9rem; border: 1px solid rgba(0, 168, 107, 0.3); font-weight: 700; text-align: left; }
-    .prose-rendered td { padding: 0.65rem 0.9rem; border: 1px solid rgba(255, 255, 255, 0.08); }
+/* ═══════════════════════════════
+   SIDEBAR
+═══════════════════════════════ */
+.sidebar{
+  width:var(--sb);min-width:var(--sb);
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:16px 12px;gap:2px;
+  transition:width 200ms var(--ease),min-width 200ms var(--ease);
+  overflow:hidden;
+}
+.sidebar.collapsed{width:64px;min-width:64px}
 
-    /* Media & Flowchart Display */
-    .prose-rendered img {
-      width: 100%;
-      max-height: 520px;
-      object-fit: cover;
-      background: #0B111E;
-      border-radius: 1rem;
-      margin: 1.75rem 0 0.5rem 0;
-      border: 1px solid rgba(0, 168, 107, 0.3);
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.25);
-      display: block;
-    }
-  </style>
+.sidebar-logo{
+  padding:4px 8px 14px;
+  font-size:20px;font-weight:700;white-space:nowrap;overflow:hidden;
+  color:var(--text);
+}
+.sidebar-logo span{color:var(--accent)}
+.sidebar-tagline{font-size:12px;color:var(--muted);font-weight:400;margin-top:1px;white-space:nowrap;overflow:hidden}
+.sidebar.collapsed .sidebar-tagline{display:none}
+
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:0 10px;height:40px;border-radius:var(--radius);
+  font-size:14px;font-weight:400;color:var(--muted);
+  background:none;border:none;width:100%;text-align:left;
+  cursor:pointer;white-space:nowrap;overflow:hidden;
+  transition:background 150ms,color 150ms;
+  position:relative;
+}
+.nav-item:hover{background:var(--surface-2);color:var(--text)}
+.nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.nav-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav-item svg{flex-shrink:0}
+.nav-label{white-space:nowrap;overflow:hidden;transition:opacity 150ms}
+.sidebar.collapsed .nav-label{opacity:0;width:0}
+
+.nav-chip{
+  margin-left:auto;font-size:11px;font-weight:600;
+  background:var(--accent-soft);color:var(--accent);
+  padding:1px 6px;border-radius:999px;flex-shrink:0;
+}
+.sidebar.collapsed .nav-chip{display:none}
+
+.sidebar-bottom{margin-top:auto;display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:10px}
+.sidebar-version{font-size:11px;color:var(--muted);padding:0 10px;white-space:nowrap;overflow:hidden}
+.sidebar.collapsed .sidebar-version{display:none}
+
+/* ═══════════════════════════════
+   SCREEN AREA
+═══════════════════════════════ */
+.screen-area{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* ═══════════════════════════════
+   SCREENS
+═══════════════════════════════ */
+.screen{display:none;flex:1;min-height:0;animation:fade-up 150ms var(--ease) both}
+.screen.active{display:flex}
+@keyframes fade-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ═══════════════════════════════
+   STUDIO SCREEN — 3-ZONE LAYOUT
+═══════════════════════════════ */
+#screen-studio{flex-direction:row}
+
+/* Brief panel */
+.brief-panel{
+  width:280px;min-width:280px;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.brief-scroll{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+.brief-title{font-size:16px;font-weight:700;color:var(--text)}
+
+.brief-footer{
+  padding:14px 20px;border-top:1px solid var(--border);
+  background:var(--surface);
+  display:flex;flex-direction:column;gap:8px;
+}
+
+/* ═══════════════════════════════
+   ARTICLE AREA
+═══════════════════════════════ */
+.article-area{
+  flex:1;min-width:0;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+
+/* metrics strip */
+.metrics-strip{
+  padding:16px 20px 10px;border-bottom:1px solid var(--border);
+  background:var(--surface);
+  display:flex;gap:20px;flex-shrink:0;
+}
+.metric-item{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.metric-label{
+  display:flex;justify-content:space-between;
+  font-size:12px;color:var(--muted);font-weight:500;
+}
+.metric-bar{height:4px;background:var(--border);border-radius:999px;overflow:hidden}
+.metric-fill{height:100%;background:var(--accent);border-radius:999px;width:0%;transition:width 400ms var(--ease)}
+
+/* tabs bar */
+.article-tabs-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;
+}
+.article-tabs{display:flex;gap:0;list-style:none;role:tablist}
+.article-tab{
+  padding:12px 16px;font-size:14px;font-weight:500;
+  color:var(--muted);background:none;border:none;
+  border-bottom:2px solid transparent;cursor:pointer;
+  transition:color 150ms,border-color 150ms;
+}
+.article-tab:hover{color:var(--text)}
+.article-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.article-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+.article-tab-actions{display:flex;gap:4px;align-items:center}
+.icon-btn{
+  display:flex;align-items:center;gap:5px;
+  padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);
+  background:none;color:var(--muted);font-size:13px;font-weight:500;
+  cursor:pointer;transition:background 150ms,color 150ms,border-color 150ms;
+}
+.icon-btn:hover{background:var(--surface-2);color:var(--text);border-color:var(--muted)}
+.icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.icon-btn.disabled{opacity:.4;pointer-events:none}
+
+/* article content scroll */
+.article-content{flex:1;overflow-y:auto;padding:24px}
+
+/* ═══════════════════════════════
+   FORM FIELDS
+═══════════════════════════════ */
+.field{display:flex;flex-direction:column;gap:5px}
+.field-label{font-size:13px;font-weight:500;color:var(--muted)}
+.field-input{
+  background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius);min-height:44px;padding:0 12px 0 38px;
+  font-size:15px;color:var(--text);width:100%;outline:none;
+  transition:border-color 150ms,box-shadow 150ms;
+}
+.field-input.no-icon{padding-left:12px}
+.field-input::placeholder{color:var(--muted);opacity:.8}
+.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+textarea.field-input{padding-top:10px;padding-bottom:10px;resize:vertical;min-height:72px;line-height:1.5}
+select.field-input{padding-left:12px;cursor:pointer}
+.input-wrap{position:relative}
+.input-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);display:flex;pointer-events:none}
+
+/* ═══════════════════════════════
+   BUTTONS
+═══════════════════════════════ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-family:var(--font);font-size:14px;font-weight:500;
+  padding:10px 16px;min-height:40px;border-radius:var(--radius);
+  cursor:pointer;border:none;
+  transition:background 150ms var(--ease),transform 100ms,opacity 150ms;
+  white-space:nowrap;
+}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.btn-primary{background:var(--accent);color:var(--on-accent)}
+.btn-primary:hover:not(:disabled){background:var(--accent-hover)}
+.btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover:not(:disabled){background:var(--surface-2)}
+.btn-ghost{background:transparent;color:var(--text)}
+.btn-ghost:hover:not(:disabled){background:var(--surface-2)}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid transparent}
+.btn-danger:hover:not(:disabled){background:var(--danger-soft)}
+
+.btn-full{width:100%}
+.btn-sm{font-size:13px;padding:7px 12px;min-height:34px}
+
+/* spinner inside button */
+.btn-spinner{width:14px;height:14px;border:2px solid currentColor;border-bottom-color:transparent;border-right-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;opacity:0.8}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ═══════════════════════════════
+   KEYWORD CHIPS
+═══════════════════════════════ */
+.chip-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.kw-chip{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:5px 12px;border:1px solid var(--border);border-radius:999px;
+  background:var(--surface-2);font-size:13px;color:var(--text);
+  cursor:pointer;
+  transition:border-color 150ms,color 150ms,background 150ms,transform 150ms;
+}
+.kw-chip:hover{border-color:var(--accent);color:var(--accent)}
+.kw-chip.selected{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);animation:chip-pop 200ms var(--ease)}
+@keyframes chip-pop{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
+.kw-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ═══════════════════════════════
+   ARTICLE SETTINGS (collapsible)
+═══════════════════════════════ */
+.settings-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface-2);color:var(--text);cursor:pointer;
+  font-size:13px;font-weight:500;width:100%;
+  transition:background 150ms;
+}
+.settings-toggle:hover{background:var(--border)}
+.settings-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.settings-chevron{transition:transform 200ms var(--ease);color:var(--muted)}
+.settings-toggle.open .settings-chevron{transform:rotate(90deg)}
+.settings-body{
+  display:none;flex-direction:column;gap:10px;
+  padding-top:10px;
+}
+.settings-body.open{display:flex}
+
+/* secondary kw rows */
+.sec-kw-row{display:flex;align-items:center;gap:6px}
+.stepper{display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.stepper button{width:28px;height:28px;border:none;background:var(--surface-2);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.stepper button:hover{background:var(--border)}
+.stepper span{width:28px;text-align:center;font-size:13px;font-weight:600;background:var(--surface)}
+
+/* ═══════════════════════════════
+   EMPTY STATE
+═══════════════════════════════ */
+.empty-state{
+  display:flex;flex-direction:column;align-items:flex-start;
+  max-width:560px;
+}
+.empty-title{font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px}
+.empty-sub{font-size:14px;color:var(--muted);margin-bottom:16px}
+.draft-list{display:flex;flex-direction:column;width:100%;gap:0;margin-top:4px}
+.draft-row{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 0;border-bottom:1px solid var(--border);
+  cursor:pointer;
+  transition:background 120ms;
+  border-radius:0;
+}
+.draft-row:first-child{border-top:1px solid var(--border)}
+.draft-row:hover .draft-title{color:var(--accent)}
+.draft-title{flex:1;font-size:14px;font-weight:500;color:var(--text);transition:color 120ms}
+.draft-meta{font-size:13px;color:var(--muted)}
+.section-label{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+
+/* ═══════════════════════════════
+   BRAINSTORM STATE
+═══════════════════════════════ */
+.brainstorm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.brainstorm-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px;cursor:pointer;
+  display:flex;flex-direction:column;justify-content:space-between;gap:10px;
+  transition:border-color 150ms,box-shadow 150ms,transform 100ms;
+  animation:fade-up 200ms var(--ease) both;
+}
+.brainstorm-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(20,30,25,.08)}
+.brainstorm-card.selected{border-color:var(--accent);background:var(--accent-soft)}
+.brainstorm-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.brainstorm-num{font-size:11px;font-family:var(--mono);color:var(--muted);font-weight:600}
+.brainstorm-text{font-size:14px;font-weight:600;color:var(--text);line-height:1.4}
+.bc-check{display:none;color:var(--accent)}
+.brainstorm-card.selected .bc-check{display:flex}
+.brainstorm-card.selected .bc-use{display:none}
+
+/* skeleton */
+.skeleton{background:linear-gradient(90deg,var(--surface-2) 25%,var(--border) 50%,var(--surface-2) 75%);background-size:200% 100%;border-radius:var(--radius);animation:shimmer 1.6s linear infinite}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.skel-card{height:80px}
+
+/* ═══════════════════════════════
+   GENERATING STATE
+═══════════════════════════════ */
+.gen-steps{display:flex;flex-direction:column;gap:0;width:100%;max-width:480px}
+.gen-step{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+  font-size:14px;color:var(--muted);
+}
+.gen-step:last-child{border-bottom:none}
+.gen-step.done{color:var(--accent)}
+.gen-step.current{color:var(--text);font-weight:500}
+.step-icon-wrap{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+
+.skel-lines{display:flex;flex-direction:column;gap:8px;width:100%;max-width:480px;margin-top:16px}
+.skel-line{height:10px;border-radius:999px}
+
+/* ═══════════════════════════════
+   RESULT STATE
+═══════════════════════════════ */
+.article-sheet{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:32px;max-width:72ch;margin:0 auto;
+  box-shadow:var(--shadow);
+}
+.prose h1{font-size:1.85rem;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:.75rem}
+.prose h2{font-size:1.3rem;font-weight:700;color:var(--text);margin:1.8rem 0 .6rem}
+.prose h3{font-size:1.1rem;font-weight:600;color:var(--accent);margin:1.3rem 0 .4rem}
+.prose p{margin:.8rem 0;line-height:1.75;font-size:16px}
+.prose ul,.prose ol{padding-left:1.5rem;margin:.8rem 0}
+.prose li{margin:.3rem 0;line-height:1.65}
+.prose a{color:var(--accent);font-weight:600;text-underline-offset:3px}
+.prose code{font-family:var(--mono);font-size:.85em;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 5px}
+.prose table{width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:14px}
+.prose th{background:var(--surface-2);padding:9px 12px;border:1px solid var(--border);font-weight:700;text-align:left}
+.prose td{padding:9px 12px;border:1px solid var(--border)}
+.prose img{width:100%;max-height:480px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border);margin:1.5rem 0;display:block}
+.markdown-sheet{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;font-family:var(--mono);font-size:13px;line-height:1.7;
+  overflow-x:auto;white-space:pre-wrap;word-break:break-word;
+  color:var(--text);
+}
+
+/* ═══════════════════════════════
+   ERROR STATE
+═══════════════════════════════ */
+.error-state{
+  display:none;align-items:flex-start;gap:12px;
+  padding:16px;border-radius:var(--radius);
+  background:var(--danger-soft);border:1px solid var(--danger);
+  color:var(--danger);font-size:14px;font-weight:500;
+  max-width:480px;
+}
+.error-state.visible{display:flex;animation:shake 300ms var(--ease)}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+/* ═══════════════════════════════
+   OTHER SCREENS (shared)
+═══════════════════════════════ */
+.screen-inner{flex:1;min-width:0;overflow-y:auto;padding:28px}
+.screen-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.screen-title{font-size:22px;font-weight:700;color:var(--text)}
+.screen-desc{font-size:14px;color:var(--muted);margin-top:4px}
+
+/* ═══════════════════════════════
+   TABLE (Keyword Matrix)
+═══════════════════════════════ */
+.data-table-wrap{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:13px}
+.data-table thead{background:var(--surface-2);position:sticky;top:0}
+.data-table th{padding:11px 14px;text-align:left;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
+.data-table tbody tr{border-bottom:1px solid var(--border);transition:background 120ms}
+.data-table tbody tr:last-child{border-bottom:none}
+.data-table tbody tr:hover{background:var(--surface-2)}
+.data-table td{padding:10px 14px;color:var(--text);vertical-align:middle}
+
+/* ═══════════════════════════════
+   TRENDS CARDS
+═══════════════════════════════ */
+.trends-query-row{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  font-size:13px;
+}
+.trends-query-title{flex:1;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trends-query-val{font-family:var(--mono);font-size:11px;color:var(--muted);flex-shrink:0}
+
+/* ═══════════════════════════════
+   REPO GRID
+═══════════════════════════════ */
+.repo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.repo-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);
+  cursor:pointer;transition:border-color 150ms,box-shadow 150ms;
+}
+.repo-card:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(20,30,25,.1)}
+
+/* ═══════════════════════════════
+   TITLE SELECTION
+═══════════════════════════════ */
+#title-selection-box{display:none;flex-direction:column;gap:12px}
+
+/* ═══════════════════════════════
+   CONFIRM MODAL
+═══════════════════════════════ */
+#confirm-modal{
+  display:none;position:fixed;inset:0;z-index:50;
+  background:rgba(20,24,26,.65);
+  align-items:center;justify-content:center;padding:16px;
+}
+#confirm-modal.open{display:flex}
+.modal-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:24px;max-width:380px;width:100%;box-shadow:0 8px 32px rgba(20,30,25,.15);
+  animation:fade-up 150ms var(--ease) both;
+}
+
+/* ═══════════════════════════════
+   TOASTS
+═══════════════════════════════ */
+#toast-container{
+  position:fixed;bottom:20px;right:20px;z-index:60;
+  display:flex;flex-direction:column;gap:8px;pointer-events:none;
+}
+.toast{
+  display:flex;align-items:center;gap:8px;
+  padding:11px 14px;border-radius:var(--radius);
+  background:var(--surface);border:1px solid var(--border);
+  box-shadow:0 4px 16px rgba(20,30,25,.12);
+  font-size:14px;font-weight:500;color:var(--text);
+  pointer-events:auto;animation:toast-in 200ms var(--ease) both;
+}
+.toast.out{animation:toast-out 200ms var(--ease) both}
+.toast-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.toast.success .toast-dot{background:var(--accent)}
+.toast.warning .toast-dot{background:var(--warn)}
+.toast.error .toast-dot{background:var(--danger)}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toast-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(8px)}}
+
+/* ═══════════════════════════════
+   STATUS CHIP
+═══════════════════════════════ */
+.status-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.status-ready{background:var(--accent-soft);color:var(--accent)}
+.status-warn{background:var(--warn-soft);color:var(--warn)}
+
+/* ═══════════════════════════════
+   MOBILE — TOP BAR + DRAWER
+═══════════════════════════════ */
+.mobile-topbar{
+  display:none;height:52px;background:var(--surface);border-bottom:1px solid var(--border);
+  align-items:center;padding:0 14px;gap:12px;flex-shrink:0;
+}
+.mobile-topbar .mobile-logo{font-size:18px;font-weight:700;flex:1}
+.mobile-topbar .mobile-logo span{color:var(--accent)}
+.drawer-overlay{display:none;position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.4)}
+.drawer-overlay.open{display:block}
+.drawer{
+  position:fixed;left:0;top:0;bottom:0;z-index:31;
+  width:var(--sb);background:var(--surface);border-right:1px solid var(--border);
+  padding:16px 12px;display:flex;flex-direction:column;gap:2px;
+  transform:translateX(-100%);transition:transform 200ms var(--ease);
+}
+.drawer.open{transform:translateX(0)}
+
+/* ═══════════════════════════════
+   RESPONSIVE
+═══════════════════════════════ */
+@media(max-width:900px){
+  .sidebar{display:none}
+  .mobile-topbar{display:flex}
+  .shell{flex-direction:column}
+  #screen-studio{flex-direction:column}
+  .brief-panel{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--border)}
+  .brief-scroll{max-height:none}
+  .article-area{min-height:0}
+}
+@media(max-width:600px){
+  .brainstorm-grid{grid-template-columns:1fr}
+  .article-sheet{padding:20px}
+  .screen-inner{padding:16px}
+  .metrics-strip{flex-direction:column;gap:10px}
+}
+
+/* ═══════════════════════════════
+   REDUCED MOTION
+═══════════════════════════════ */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
 </head>
+<body>
 
-<body class="bg-sada-lightBg dark:bg-sada-darkBg text-sada-textLight dark:text-sada-textDark min-h-screen flex flex-col font-sans transition-colors duration-200">
+<!-- ─────────────────────────────────────
+     DATA CARRIERS (Flask Jinja)
+───────────────────────────────────── -->
+<script id="server-files-data" type="application/json">{% if files %}{{ files | tojson }}{% else %}[]{% endif %}</script>
+<script id="server-keywords-data" type="application/json">{% if keywords %}{{ keywords | tojson }}{% else %}[]{% endif %}</script>
 
-  <!-- Safe Jinja Data Carrier for Flask backend -->
-  <script id="server-files-data" type="application/json">{% if files %}{{ files | tojson }}{% else %}[]{% endif %}</script>
-  <script id="server-keywords-data" type="application/json">{% if keywords %}{{ keywords | tojson }}{% else %}[]{% endif %}</script>
+<!-- ─────────────────────────────────────
+     MOBILE TOP BAR + DRAWER
+───────────────────────────────────── -->
+<div class="mobile-topbar">
+  <button class="icon-btn" style="border:none;padding:6px" onclick="openDrawer()" aria-label="Open navigation">
+    <i data-lucide="menu" style="width:20px;height:20px" aria-hidden="true"></i>
+  </button>
+  <div class="mobile-logo">Sada<span>Hisab</span></div>
+  <button class="icon-btn" style="border:none;padding:6px" onclick="toggleTheme()" aria-label="Toggle theme">
+    <i id="theme-icon-mobile" data-lucide="sun" style="width:18px;height:18px" aria-hidden="true"></i>
+  </button>
+</div>
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="mobile-drawer" role="dialog" aria-label="Navigation menu">
+  <div class="sidebar-logo">Sada<span style="color:var(--accent)">Hisab</span></div>
+  <button class="nav-item tab-btn" data-tab="studio" onclick="switchTab('studio');closeDrawer()" id="m-tab-btn-studio" aria-current="page">
+    <i data-lucide="pen-line" style="width:18px;height:18px" aria-hidden="true"></i>
+    <span class="nav-label">Studio</span>
+  </button>
+  <button class="nav-item tab-btn" data-tab="trends" onclick="switchTab('trends');closeDrawer()" id="m-tab-btn-trends">
+    <i data-lucide="trending-up" style="width:18px;height:18px" aria-hidden="true"></i>
+    <span class="nav-label">Trends radar</span>
+  </button>
+  <button class="nav-item tab-btn" data-tab="keywords" onclick="switchTab('keywords');closeDrawer()" id="m-tab-btn-keywords">
+    <i data-lucide="table" style="width:18px;height:18px" aria-hidden="true"></i>
+    <span class="nav-label">Keyword matrix</span>
+    <span class="nav-chip" id="m-header-kw-count">--</span>
+  </button>
+  <button class="nav-item tab-btn" data-tab="repository" onclick="switchTab('repository');closeDrawer()" id="m-tab-btn-repository">
+    <i data-lucide="bookmark" style="width:18px;height:18px" aria-hidden="true"></i>
+    <span class="nav-label">Saved articles</span>
+    <span class="nav-chip" id="m-header-blog-count">0</span>
+  </button>
+  <div class="sidebar-bottom">
+    <button class="nav-item" onclick="toggleTheme();closeDrawer()">
+      <i id="theme-icon-drawer" data-lucide="sun" style="width:18px;height:18px" aria-hidden="true"></i>
+      <span class="nav-label">Theme</span>
+    </button>
+  </div>
+</div>
 
-  <!-- TOP ExampleBrand NAV -->
-  <header class="sticky top-0 z-40 backdrop-blur-md bg-white/90 dark:bg-sada-darkSurface/90 border-b border-sada-lightBorder dark:border-sada-darkBorder px-4 lg:px-8 py-3.5 transition-colors">
-    <div class="max-w-7xl mx-auto flex items-center justify-between">
-      
-      <!-- Brand Logo -->
-      <div class="flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sada-green to-emerald-400 flex items-center justify-center shadow-sada">
-          <i data-lucide="receipt" class="w-5 h-5 text-white font-bold"></i>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">Sada<span class="text-sada-green">Hisab</span></span>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-sada-green border border-emerald-300 dark:border-emerald-800">
-              SEO Studio v5.2 ⚡
-            </span>
-          </div>
-          <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark font-medium">Pakistani Business ERP, POS & SEO Intelligence</p>
-        </div>
-      </div>
+<!-- ─────────────────────────────────────
+     APP SHELL
+───────────────────────────────────── -->
+<div class="shell">
 
-      <!-- Navigation Tabs -->
-      <nav class="hidden md:flex items-center p-1 bg-slate-100 dark:bg-slate-900/60 rounded-xl border border-sada-lightBorder dark:border-sada-darkBorder text-xs font-semibold">
-        <button onclick="switchTab('studio')" id="tab-btn-studio" class="tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-green bg-white dark:bg-sada-darkCard shadow-sm">
-          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span>Content Studio</span>
-        </button>
-        <button onclick="switchTab('trends')" id="tab-btn-trends" class="tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-slate-900 dark:hover:text-white">
-          <i data-lucide="trending-up" class="w-3.5 h-3.5 text-sada-green"></i>
-          <span>PyTrends Radar</span>
-          <span class="w-2 h-2 rounded-full bg-sada-green animate-pulse"></span>
-        </button>
-        <button onclick="switchTab('keywords')" id="tab-btn-keywords" class="tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-slate-900 dark:hover:text-white">
-          <i data-lucide="table" class="w-3.5 h-3.5"></i>
-          <span>Keyword Matrix</span>
-          <span id="header-kw-count" class="px-2 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-[10px]">--</span>
-        </button>
-        <button onclick="switchTab('repository')" id="tab-btn-repository" class="tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-slate-900 dark:hover:text-white">
-          <i data-lucide="archive" class="w-3.5 h-3.5"></i>
-          <span>Saved Articles</span>
-          <span id="header-blog-count" class="px-2 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-sada-green text-[10px]">0</span>
-        </button>
-      </nav>
-
-      <!-- Engine Status & Theme Toggle -->
-      <div class="flex items-center space-x-3">
-        <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkCard text-xs font-mono">
-          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sada-green"></span> 2,000+ Words</span>
-          <span class="text-slate-300 dark:text-slate-700">|</span>
-          <span class="text-sada-green font-semibold">Groq 120B</span>
-        </div>
-
-        <button onclick="toggleTheme()" class="w-9 h-9 rounded-xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkCard flex items-center justify-center text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-sada-green transition-all" title="Toggle Theme">
-          <i id="theme-icon" data-lucide="sun" class="w-4 h-4"></i>
-        </button>
-      </div>
-
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-logo">
+      Sada<span>Hisab</span>
+      <div class="sidebar-tagline">Pakistani business ERP, POS &amp; SEO</div>
     </div>
-  </header>
 
-  <main class="max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 flex-1 flex flex-col">
+    <button class="nav-item tab-btn active" data-tab="studio" onclick="switchTab('studio')" id="tab-btn-studio" aria-current="page">
+      <i data-lucide="pen-line" style="width:18px;height:18px" aria-hidden="true"></i>
+      <span class="nav-label">Studio</span>
+    </button>
+    <button class="nav-item tab-btn" data-tab="trends" onclick="switchTab('trends')" id="tab-btn-trends">
+      <i data-lucide="trending-up" style="width:18px;height:18px" aria-hidden="true"></i>
+      <span class="nav-label">Trends radar</span>
+    </button>
+    <button class="nav-item tab-btn" data-tab="keywords" onclick="switchTab('keywords')" id="tab-btn-keywords">
+      <i data-lucide="table" style="width:18px;height:18px" aria-hidden="true"></i>
+      <span class="nav-label">Keyword matrix</span>
+      <span class="nav-chip" id="header-kw-count">--</span>
+    </button>
+    <button class="nav-item tab-btn" data-tab="repository" onclick="switchTab('repository')" id="tab-btn-repository">
+      <i data-lucide="bookmark" style="width:18px;height:18px" aria-hidden="true"></i>
+      <span class="nav-label">Saved articles</span>
+      <span class="nav-chip" id="header-blog-count">0</span>
+    </button>
 
-    <!-- TAB 1: CONTENT STUDIO -->
-    <section id="tab-studio" class="tab-content flex flex-col gap-6">
-      
-      <!-- Primary Input & Telemetry Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- Keyword Input Console -->
-        <div class="lg:col-span-8 p-6 md:p-7 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-base md:text-lg font-bold flex items-center gap-2">
-                <i data-lucide="cpu" class="w-5 h-5 text-sada-green"></i>
-                <span>ExampleBrand Autonomous SEO & Title Studio</span>
-              </h2>
-              <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-sada-green border border-emerald-200 dark:border-emerald-800">
-                Density: ~8/1k minimum · Min 2000 Words
-              </span>
-            </div>
+    <div class="sidebar-bottom">
+      <button class="nav-item" onclick="toggleTheme()" aria-label="Toggle theme">
+        <i id="theme-icon" data-lucide="sun" style="width:18px;height:18px" aria-hidden="true"></i>
+        <span class="nav-label">Theme</span>
+      </button>
+      <button class="nav-item" onclick="toggleSidebar()" id="collapse-btn" aria-label="Collapse sidebar">
+        <i data-lucide="panel-left-close" style="width:18px;height:18px" aria-hidden="true"></i>
+        <span class="nav-label">Collapse</span>
+      </button>
+      <div class="sidebar-version">SEO Studio v1.2</div>
+    </div>
+  </nav>
 
-            <label for="article-heading" class="block text-xs font-semibold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mb-2">Article Heading</label>
-            <div class="relative">
-              <input id="article-heading" type="text" placeholder="e.g. How POS Software Helps Bakeries Reduce Stock Waste"
-                     class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-4 py-3 pl-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sada-green transition-all placeholder:text-slate-400">
-              <i data-lucide="heading" class="w-4 h-4 absolute left-3.5 top-3.5 text-sada-green"></i>
-            </div>
+  <!-- SCREEN AREA -->
+  <div class="screen-area">
 
-            <label for="target-keyword" class="block text-xs font-semibold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mt-4 mb-2">Primary SEO Keyword</label>
-            <div class="relative">
-              <input id="target-keyword" type="text" placeholder="e.g. POS Software for Bakery or Pharmacy Management System in Lahore" 
-                     class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-4 py-3 pl-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sada-green transition-all placeholder:text-slate-400">
-              <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3.5 text-sada-green"></i>
-            </div>
+    <!-- ══════════════════════════════
+         SCREEN: STUDIO
+    ══════════════════════════════ -->
+    <div class="screen active" id="screen-studio">
 
-            <div class="mt-4 p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg/70 border border-sada-lightBorder dark:border-sada-darkBorder">
-              <div class="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <label class="text-xs font-bold text-sada-green">Secondary SEO Keywords</label>
-                  <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark mt-1">Choose how many times each phrase should appear.</p>
-                </div>
-                <button type="button" onclick="addSecondaryKeyword()" class="shrink-0 px-3 py-1.5 rounded-lg border border-sada-green/60 text-sada-green hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-[11px] font-bold flex items-center gap-1.5">
-                  <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add keyword
-                </button>
-              </div>
-              <div id="secondary-keyword-list" class="space-y-2"></div>
-            </div>
+      <!-- BRIEF PANEL -->
+      <aside class="brief-panel" aria-label="Article brief">
+        <div class="brief-scroll">
+          <div class="brief-title">New article</div>
 
-            <!-- TRENDING DEMAND QUICK-BAR -->
-            <div class="mt-4 p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg/70 border border-sada-lightBorder dark:border-sada-darkBorder">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-bold text-sada-green flex items-center gap-1.5">
-                  <i data-lucide="flame" class="w-3.5 h-3.5"></i> Trending Market Search Spikes (Click to Select):
-                </span>
-                <button onclick="switchTab('trends')" class="text-[11px] text-sada-green hover:underline font-semibold flex items-center gap-0.5">
-                  PyTrends Radar &rarr;
-                </button>
-              </div>
-              <div id="studio-quick-trends" class="flex flex-wrap items-center gap-2 text-xs"></div>
+          <!-- Heading -->
+          <div class="field">
+            <label for="article-heading" class="field-label">Heading</label>
+            <div class="input-wrap">
+              <span class="input-icon"><i data-lucide="heading" style="width:15px;height:15px" aria-hidden="true"></i></span>
+              <input id="article-heading" type="text" class="field-input"
+                placeholder="How POS software helps bakeries reduce stock waste">
             </div>
           </div>
 
-          <!-- Studio Action Buttons -->
-          <div class="mt-6 pt-4 border-t border-sada-lightBorder dark:border-sada-darkBorder flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3 text-xs text-sada-textMutedLight dark:text-sada-textMutedDark">
-              <span class="flex items-center gap-1.5"><i data-lucide="git-merge" class="w-3.5 h-3.5 text-sada-green"></i> Mermaid Diagrams</span>
-              <span class="flex items-center gap-1.5"><i data-lucide="image" class="w-3.5 h-3.5 text-emerald-400"></i> Pexels Photos</span>
-              <span class="flex items-center gap-1.5"><i data-lucide="link-2" class="w-3.5 h-3.5 text-sada-green"></i> 2 Verified Links</span>
-            </div>
-
-            <div class="flex items-center gap-2.5 w-full sm:w-auto">
-              <!-- Step 1: Brainstorm 6 Titles -->
-              <button id="btn-fetch-titles" onclick="fetchTitleOptions()" class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-sada-green/60 text-sada-green hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-bold flex items-center justify-center gap-2 transition-all">
-                <i data-lucide="list-ordered" class="w-4 h-4"></i>
-                <span id="btn-titles-text">1. Brainstorm 6 Titles</span>
-              </button>
-
-              <button id="btn-open-brief" onclick="openBriefPanel()" class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-amber-400/70 text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-xs font-bold flex items-center justify-center gap-2 transition-all">
-                <i data-lucide="clipboard-pen-line" class="w-4 h-4"></i>
-                <span>Define Blog Purpose</span>
-              </button>
-
-              <!-- Step 2: Generate 2000+ Word Article -->
-              <button id="generate-btn" onclick="generateArticle()" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-sada-green hover:bg-sada-greenHover text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sada transition-all hover:scale-[1.01]">
-                <i data-lucide="sparkles" class="w-4 h-4"></i>
-                <span id="generate-btn-text">2. Generate 2000+ Word Article</span>
-              </button>
+          <!-- Primary keyword -->
+          <div class="field">
+            <label for="target-keyword" class="field-label">Primary keyword</label>
+            <div class="input-wrap">
+              <span class="input-icon"><i data-lucide="search" style="width:15px;height:15px" aria-hidden="true"></i></span>
+              <input id="target-keyword" type="text" class="field-input"
+                placeholder="POS software for bakery">
             </div>
           </div>
 
-          <div id="blog-brief-panel" class="hidden mt-5 p-5 rounded-xl border border-amber-300/70 dark:border-amber-800/70 bg-amber-50/70 dark:bg-amber-950/20">
-            <div class="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Shape This Article</h3>
-                <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark mt-1">Give the writer a clear purpose and reader context. These answers will guide the article, not appear as headings.</p>
-              </div>
-              <button type="button" onclick="closeBriefPanel()" class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-sada-green" title="Close blog brief">
-                <i data-lucide="x" class="w-4 h-4"></i>
-              </button>
-            </div>
-            <label for="blog-purpose" class="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">What should this blog accomplish?</label>
-            <textarea id="blog-purpose" rows="2" placeholder="Example: Help pharmacy owners compare options and understand how to reduce expiry-related stock losses." class="w-full bg-white dark:bg-sada-darkBg border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
-            <label for="blog-tone" class="block text-xs font-semibold text-slate-700 dark:text-slate-200 mt-4 mb-1.5">What tone should the article use?</label>
-            <select id="blog-tone" class="w-full bg-white dark:bg-sada-darkBg border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
-              <option value="professional">Professional and direct - no informal stories or invented anecdotes</option>
-              <option value="conversational">Conversational and approachable - friendly, but still useful</option>
-              <option value="informal">Informal and friendly - relaxed language and relatable examples</option>
+          <!-- Trending now -->
+          <div class="field">
+            <div class="field-label">Trending now</div>
+            <div class="chip-group" id="studio-quick-trends" style="margin-top:4px"></div>
+          </div>
+
+          <!-- Post purpose -->
+          <div class="field">
+            <label for="blog-tone" class="field-label">Post purpose</label>
+            <select id="blog-tone" class="field-input no-icon">
+              <option value="professional">Educate — professional, factual</option>
+              <option value="conversational">Convert — persuasive and approachable</option>
+              <option value="informal">Engage — informal and relatable</option>
             </select>
-            <div id="brief-questions" class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4"></div>
-            <div class="flex justify-end mt-4">
-              <button type="button" onclick="saveBlogBrief()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold">Save Article Brief</button>
-            </div>
           </div>
-        </div>
 
-        <!-- Telemetry Scorecard -->
-        <div class="lg:col-span-4 p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card flex flex-col justify-between">
+          <!-- Article settings (collapsible) -->
           <div>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-sada-textMutedLight dark:text-sada-textMutedDark mb-4 flex items-center justify-between">
-              <span>Real-Time Audit Metrics</span>
-              <i data-lucide="gauge" class="w-4 h-4 text-sada-green"></i>
-            </h3>
+            <button class="settings-toggle" id="settings-toggle-btn" onclick="toggleSettings()" aria-expanded="false">
+              <span>Article settings</span>
+              <i data-lucide="chevron-right" style="width:15px;height:15px" class="settings-chevron" aria-hidden="true"></i>
+            </button>
+            <div class="settings-body" id="settings-body">
 
-            <div class="grid grid-cols-2 gap-3">
-              <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder">
-                <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark">Total Word Count</p>
-                <div class="flex items-baseline gap-1 mt-1">
-                  <span id="metric-words" class="text-2xl font-black">0</span>
-                  <span class="text-[10px] text-sada-textMutedLight dark:text-sada-textMutedDark">words</span>
-                </div>
+              <!-- Secondary keywords -->
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Secondary keywords</div>
+              <div id="secondary-keyword-list" style="display:flex;flex-direction:column;gap:8px"></div>
+              <button type="button" onclick="addSecondaryKeyword()" class="btn btn-ghost btn-sm" style="align-self:flex-start">
+                <i data-lucide="plus" style="width:14px;height:14px" aria-hidden="true"></i>
+                Add keyword
+              </button>
+
+              <hr style="border:none;border-top:1px solid var(--border)">
+
+              <!-- Blog purpose textbox (inside settings) -->
+              <div class="field">
+                <label for="blog-purpose" class="field-label">Blog purpose (optional)</label>
+                <textarea id="blog-purpose" rows="2" class="field-input no-icon"
+                  placeholder="Help pharmacy owners reduce expiry-related stock losses."></textarea>
               </div>
 
-              <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder">
-                <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark">Keyword Density</p>
-                <div class="flex items-baseline gap-1 mt-1">
-                  <span id="metric-density" class="text-2xl font-black text-sada-green">0.0</span>
-                  <span class="text-[10px] text-sada-textMutedLight dark:text-sada-textMutedDark">/ 1k</span>
-                </div>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder">
-                <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark">Mermaid Diagrams</p>
-                <div class="flex items-baseline gap-1 mt-1">
-                  <span id="metric-diagrams" class="text-2xl font-black text-emerald-500">0</span>
-                  <span class="text-[10px] text-sada-textMutedLight dark:text-sada-textMutedDark">Flowcharts</span>
-                </div>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder">
-                <p class="text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark">Pexels Photos</p>
-                <div class="flex items-baseline gap-1 mt-1">
-                  <span id="metric-photos" class="text-2xl font-black text-sada-green">0</span>
-                  <span class="text-[10px] text-sada-textMutedLight dark:text-sada-textMutedDark">Photos</span>
-                </div>
-              </div>
             </div>
           </div>
 
-          <div class="mt-4 pt-3 border-t border-sada-lightBorder dark:border-sada-darkBorder">
-            <div class="flex items-center justify-between text-xs mb-1.5">
-              <span class="text-sada-textMutedLight dark:text-sada-textMutedDark">SEO Compliance Status:</span>
-              <span id="metric-health" class="font-bold text-sada-green">Ready</span>
-            </div>
-            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-              <div id="metric-health-bar" class="bg-sada-green h-full w-0 transition-all duration-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+        </div><!-- /brief-scroll -->
 
-      <!-- TITLE SELECTION PANEL (DIRECT REFLECTION OF /api/titles/<keyword>) -->
-      <div id="title-selection-box" class="hidden p-6 md:p-7 rounded-2xl border-2 border-sada-green/50 bg-white dark:bg-sada-darkSurface shadow-sada-card transition-all">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-sada-lightBorder dark:border-sada-darkBorder">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-sada-green animate-ping"></span>
-              <h3 class="text-sm md:text-base font-bold text-slate-900 dark:text-white">Choose Your H1 Headline Angle:</h3>
-            </div>
-            <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark mt-0.5">Click any title card below to lock it in as your article's verified H1 header.</p>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <button onclick="clearTitleSelection()" class="text-[11px] font-semibold text-rose-500 hover:underline px-2 py-1">
-              Reset Selection
-            </button>
-            <span class="text-xs font-mono text-sada-green font-bold bg-emerald-50 dark:bg-emerald-950 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800">
-              6 Options Ready
-            </span>
-          </div>
-        </div>
-
-        <div id="title-options-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5"></div>
-      </div>
-
-      <!-- Article Editor & Render Workspace -->
-      <div class="rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface overflow-hidden shadow-sada-card flex flex-col flex-1">
-        <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-b border-sada-lightBorder dark:border-sada-darkBorder flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <button onclick="toggleEditorMode('rendered')" id="btn-view-rendered" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-sada-darkCard text-sada-green shadow-sm border border-sada-lightBorder dark:border-sada-darkBorder">
-              Rendered Article & Visuals
-            </button>
-            <button onclick="toggleEditorMode('raw')" id="btn-view-raw" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-slate-900 dark:hover:text-white">
-              Editable Markdown View
-            </button>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <button onclick="copyCurrentContent()" class="px-3.5 py-1.5 rounded-lg border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkCard hover:bg-slate-50 text-xs font-medium flex items-center gap-1.5 transition-colors">
-              <i data-lucide="copy" class="w-3.5 h-3.5 text-sada-green"></i> Copy Markdown
-            </button>
-            <button onclick="downloadCurrentBlog()" class="px-3.5 py-1.5 rounded-lg border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkCard hover:bg-slate-50 text-xs font-medium flex items-center gap-1.5 transition-colors">
-              <i data-lucide="download" class="w-3.5 h-3.5 text-sada-green"></i> Download .md
-            </button>
-          </div>
-        </div>
-
-        <div class="p-6 md:p-8 min-h-[500px] flex-1 overflow-y-auto">
-          <!-- Loading State -->
-          <div id="generation-loader" class="hidden h-96 flex flex-col items-center justify-center text-center space-y-4">
-            <div class="w-12 h-12 rounded-full border-3 border-emerald-200 dark:border-emerald-900 border-t-sada-green animate-spin"></div>
-            <div>
-              <p id="loader-title" class="text-sm font-bold tracking-tight">Synthesizing 2,000+ words across H1-H3 sections...</p>
-              <p id="loader-desc" class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark mt-1 max-w-sm">Enforcing ~9.5/1k keyword density, building base64 Mermaid diagrams, and querying Pexels.</p>
-            </div>
-          </div>
-
-          <!-- Empty State -->
-          <div id="studio-empty-state" class="h-96 flex flex-col items-center justify-center text-center text-sada-textMutedLight dark:text-sada-textMutedDark">
-            <div class="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-center mb-3">
-              <i data-lucide="receipt" class="w-8 h-8 text-sada-green"></i>
-            </div>
-            <p class="text-base font-bold text-slate-800 dark:text-slate-200">No Post Generated Yet</p>
-            <p class="text-xs max-w-sm mt-1">Pick a keyword from the quick bar, brainstorm titles, or click any breakout term from the Trends Radar.</p>
-          </div>
-
-          <!-- Formatted Content -->
-          <div id="markdown-rendered-view" class="prose-rendered hidden max-w-4xl mx-auto"></div>
-          <!-- Editable Raw Markdown -->
-          <textarea id="markdown-raw-view" oninput="syncRawEdits()" class="hidden w-full h-[550px] font-mono text-xs p-5 bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl focus:outline-none resize-none leading-relaxed"></textarea>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 2: PYTRENDS RADAR -->
-    <section id="tab-trends" class="tab-content hidden flex flex-col gap-6">
-      <div class="p-6 md:p-7 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-        <div class="max-w-2xl">
-          <h2 class="text-base md:text-lg font-bold flex items-center gap-2">
-            <i data-lucide="trending-up" class="w-5 h-5 text-sada-green"></i>
-            <span>Search Market Radar (Live PyTrends Demand)</span>
-          </h2>
-          <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark mt-1">
-            Queries live Google Trends acceleration data directly from Flask <code>/api/trends/&lt;keyword&gt;</code>. Click <strong>Select & Write</strong> on any query to paste it into the Studio.
-          </p>
-        </div>
-
-        <div class="mt-4 flex gap-3">
-          <div class="relative flex-1">
-            <input id="trend-search-input" type="text" placeholder="Enter keyword to query trends (e.g. POS Software, Pharmacy Management, FBR Invoicing)..."
-                   class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-4 py-2.5 pl-10 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-sada-green">
-            <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3 text-sada-green"></i>
-          </div>
-          <button onclick="queryBackendTrends()" class="px-5 py-2.5 rounded-xl bg-sada-green hover:bg-sada-greenHover text-white font-bold text-xs flex items-center gap-2 shadow-sada transition-all">
-            <i data-lucide="compass" class="w-4 h-4"></i> Query PyTrends Live
+        <!-- Sticky footer -->
+        <div class="brief-footer">
+          <button id="btn-fetch-titles" onclick="fetchTitleOptions()" class="btn btn-secondary btn-full">
+            <i data-lucide="lightbulb" style="width:17px;height:17px" aria-hidden="true"></i>
+            <span id="btn-titles-text">Brainstorm titles</span>
+          </button>
+          <button id="generate-btn" onclick="generateArticle()" class="btn btn-primary btn-full">
+            <i data-lucide="file-pen-line" style="width:17px;height:17px" aria-hidden="true"></i>
+            <span id="generate-btn-text">Generate article</span>
           </button>
         </div>
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <span class="text-[11px] font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark">Search range:</span>
-          <div class="flex rounded-lg border border-sada-lightBorder dark:border-sada-darkBorder bg-slate-50 dark:bg-sada-darkBg p-1" role="group" aria-label="Trend search range">
-            <button type="button" data-trend-timeframe="7d" onclick="setTrendTimeframe('7d', this)" class="trend-timeframe-btn px-3 py-1.5 rounded-md text-[11px] font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark transition-all">Weekly</button>
-            <button type="button" data-trend-timeframe="1m" onclick="setTrendTimeframe('1m', this)" class="trend-timeframe-btn px-3 py-1.5 rounded-md text-[11px] font-semibold bg-sada-green text-white shadow-sm transition-all" aria-pressed="true">Monthly</button>
-            <button type="button" data-trend-timeframe="12m" onclick="setTrendTimeframe('12m', this)" class="trend-timeframe-btn px-3 py-1.5 rounded-md text-[11px] font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark transition-all">12 months</button>
+      </aside>
+
+      <!-- ARTICLE AREA -->
+      <main class="article-area" aria-label="Article workspace">
+
+        <!-- Metrics strip -->
+        <div class="metrics-strip">
+          <div class="metric-item">
+            <div class="metric-label">
+              <span>Words</span>
+              <span id="metric-words-label">0 / 2,000</span>
+            </div>
+            <div class="metric-bar"><div class="metric-fill" id="metric-words-bar"></div></div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">
+              <span>Density</span>
+              <span id="metric-density-label">0.0 / 8</span>
+            </div>
+            <div class="metric-bar"><div class="metric-fill" id="metric-density-bar"></div></div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">
+              <span>Checks</span>
+              <span id="metric-checks-label">0 / 3</span>
+            </div>
+            <div class="metric-bar"><div class="metric-fill" id="metric-checks-bar"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;flex-shrink:0">
+            <span id="metric-health" class="status-chip status-ready" aria-live="polite">Ready</span>
           </div>
         </div>
-      </div>
 
-      <!-- Chart.js Trend Visualizer -->
-      <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <i data-lucide="bar-chart" class="w-4 h-4 text-sada-green"></i> Google Trends Relative Interest Over Time
-          </h3>
-          <span id="trends-source-badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-sada-textMutedDark">Connecting</span>
-        </div>
-        <div class="h-64 w-full">
-          <canvas id="trendsChart"></canvas>
-          <div id="trends-empty-state" class="hidden h-full flex items-center justify-center text-center text-sm text-sada-textMutedLight dark:text-sada-textMutedDark">
-            No sufficient data was available from Google Trends for this keyword.
+        <!-- Tabs bar -->
+        <div class="article-tabs-bar">
+          <ul class="article-tabs" role="tablist">
+            <li role="presentation">
+              <button class="article-tab active" role="tab" id="btn-view-rendered" aria-selected="true"
+                onclick="toggleEditorMode('rendered')">Article</button>
+            </li>
+            <li role="presentation">
+              <button class="article-tab" role="tab" id="btn-view-raw" aria-selected="false"
+                onclick="toggleEditorMode('raw')">Markdown</button>
+            </li>
+          </ul>
+          <div class="article-tab-actions">
+            <button onclick="copyCurrentContent()" id="btn-copy" class="icon-btn disabled" aria-label="Copy markdown" title="Copy markdown">
+              <i data-lucide="copy" style="width:15px;height:15px" aria-hidden="true"></i>
+              <span style="font-size:13px">Copy</span>
+            </button>
+            <button onclick="downloadCurrentBlog()" id="btn-download" class="icon-btn disabled" aria-label="Download .md" title="Download .md">
+              <i data-lucide="download" style="width:15px;height:15px" aria-hidden="true"></i>
+              <span style="font-size:13px">Download</span>
+            </button>
           </div>
         </div>
-      </div>
 
-      <!-- Interest by Region -->
-      <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <i data-lucide="globe" class="w-4 h-4 text-sada-green"></i> Interest by Region (Pakistan)
-          </h3>
-          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Top Provinces</span>
-        </div>
-        <div id="trends-region-list" class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2"></div>
-      </div>
+        <!-- Article content scroll -->
+        <div class="article-content" id="article-content-area">
 
-      <!-- Top & Rising Related Queries -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2 mb-4">
-            <i data-lucide="star" class="w-4 h-4 text-sada-green"></i> Top Related Queries
-          </h3>
-          <div id="trends-top-queries" class="flex flex-col gap-2"></div>
-        </div>
-        <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2 mb-4">
-            <i data-lucide="flame" class="w-4 h-4 text-sada-green"></i> Rising Related Queries
-          </h3>
-          <div id="trends-rising-queries" class="flex flex-col gap-2"></div>
-        </div>
-      </div>
-    </section>
+          <!-- ERROR BANNER -->
+          <div id="generate-error" class="error-banner" style="display:none;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:var(--radius);background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);font-size:14px;font-weight:500;max-width:480px;margin-bottom:16px">
+            <i data-lucide="alert-circle" style="width:16px;height:16px;flex-shrink:0;margin-top:1px" aria-hidden="true"></i>
+            <span id="generate-error-msg">Generation failed. Try again.</span>
+            <button onclick="generateArticle()" class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--danger)">Retry</button>
+          </div>
 
-    <!-- TAB 3: KEYWORDS MATRIX -->
-    <section id="tab-keywords" class="tab-content hidden flex flex-col gap-6">
-      <div class="p-6 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface shadow-sada-card">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <!-- EMPTY STATE -->
+          <div id="studio-empty-state" class="empty-state" style="display:flex">
+            <div style="color:var(--border);margin-bottom:12px">
+              <i data-lucide="file-text" style="width:40px;height:40px" aria-hidden="true"></i>
+            </div>
+            <div class="empty-title" id="empty-title">Start your first article</div>
+            <div class="empty-sub">Pick a keyword, or reopen a saved draft.</div>
+            <div id="recent-drafts-section" style="width:100%"></div>
+          </div>
+
+          <!-- BRAINSTORM STATE -->
+          <div id="brainstorm-state" style="display:none;flex-direction:column;gap:12px;width:100%">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-size:15px;font-weight:700;color:var(--text)">Choose your H1 headline</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px">Click a card to use it as your article heading.</div>
+              </div>
+              <button onclick="clearTitleSelection()" style="font-size:13px;font-weight:500;color:var(--danger);background:none;border:none;cursor:pointer">Reset</button>
+            </div>
+            <div id="title-options-grid" class="brainstorm-grid"></div>
+          </div>
+
+          <!-- GENERATING STATE -->
+          <div id="generation-loader" style="display:none;flex-direction:column;gap:4px">
+            <div class="gen-steps" aria-live="polite">
+              <div class="gen-step" id="step-0">
+                <span class="step-icon-wrap" id="step-icon-0"><span class="step-spinner"></span></span>
+                <span>Reading your keyword</span>
+              </div>
+              <div class="gen-step" id="step-1">
+                <span class="step-icon-wrap" id="step-icon-1"><i data-lucide="circle" style="width:14px;height:14px;color:var(--border)" aria-hidden="true"></i></span>
+                <span>Planning H1 to H3 sections</span>
+              </div>
+              <div class="gen-step" id="step-2">
+                <span class="step-icon-wrap" id="step-icon-2"><i data-lucide="circle" style="width:14px;height:14px;color:var(--border)" aria-hidden="true"></i></span>
+                <span>Writing the article</span>
+              </div>
+              <div class="gen-step" id="step-3">
+                <span class="step-icon-wrap" id="step-icon-3"><i data-lucide="circle" style="width:14px;height:14px;color:var(--border)" aria-hidden="true"></i></span>
+                <span>Building diagrams</span>
+              </div>
+              <div class="gen-step" id="step-4">
+                <span class="step-icon-wrap" id="step-icon-4"><i data-lucide="circle" style="width:14px;height:14px;color:var(--border)" aria-hidden="true"></i></span>
+                <span>Fetching photos</span>
+              </div>
+            </div>
+            <div class="skel-lines">
+              <div class="skel-line skeleton" style="width:55%;height:12px"></div>
+              <div class="skel-line skeleton" style="width:100%"></div>
+              <div class="skel-line skeleton" style="width:92%"></div>
+              <div class="skel-line skeleton" style="width:78%"></div>
+            </div>
+          </div>
+
+          <!-- RESULT: RENDERED -->
+          <div id="markdown-rendered-view" class="article-sheet prose" style="display:none"></div>
+
+          <!-- RESULT: RAW MARKDOWN -->
+          <textarea id="markdown-raw-view" oninput="syncRawEdits()"
+            class="markdown-sheet" style="display:none;width:100%;min-height:500px;resize:vertical"
+            spellcheck="false"></textarea>
+
+        </div><!-- /article-content -->
+      </main>
+    </div><!-- /screen-studio -->
+
+    <!-- ══════════════════════════════
+         SCREEN: TRENDS RADAR
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-trends">
+      <div class="screen-inner">
+        <div class="screen-header">
           <div>
-            <h2 class="text-base md:text-lg font-bold flex items-center gap-2">
-              <i data-lucide="table" class="w-5 h-5 text-sada-green"></i>
-              <span>ExampleBrand Keyword & Conversion Matrix</span>
-            </h2>
-            <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark">Direct URL routing for ExampleBrand landing pages and pricing plans</p>
+            <h1 class="screen-title">Trends radar</h1>
+            <div class="screen-desc">Live Google Trends demand data. Click <strong>Use in Studio</strong> to fill the primary keyword.</div>
           </div>
+          <button onclick="queryBackendTrends()" class="btn btn-secondary btn-sm">
+            <i data-lucide="refresh-cw" style="width:15px;height:15px" aria-hidden="true"></i>
+            Refresh
+          </button>
+        </div>
 
-          <div class="relative w-full md:w-64">
-            <input id="matrix-search" oninput="filterKeywords()" type="text" placeholder="Filter keywords..." 
-                   class="w-full bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-xl px-3.5 py-2 pl-9 text-xs focus:outline-none focus:ring-2 focus:ring-sada-green">
-            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-sada-green"></i>
+        <!-- Search + timeframe -->
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center">
+          <div class="input-wrap" style="flex:1;min-width:200px">
+            <span class="input-icon"><i data-lucide="search" style="width:15px;height:15px" aria-hidden="true"></i></span>
+            <input id="trend-search-input" type="text" class="field-input" style="min-height:40px"
+              placeholder="Enter keyword (e.g. POS Software, Pharmacy Management…)">
+          </div>
+          <button onclick="queryBackendTrends()" class="btn btn-primary btn-sm">
+            <i data-lucide="compass" style="width:15px;height:15px" aria-hidden="true"></i>
+            Query live
+          </button>
+          <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+            <button type="button" data-trend-timeframe="7d" onclick="setTrendTimeframe('7d',this)" class="trend-timeframe-btn" style="padding:8px 12px;font-size:13px;font-weight:500;border:none;border-right:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer">Weekly</button>
+            <button type="button" data-trend-timeframe="1m" onclick="setTrendTimeframe('1m',this)" class="trend-timeframe-btn" aria-pressed="true" style="padding:8px 12px;font-size:13px;font-weight:500;border:none;border-right:1px solid var(--border);background:var(--accent);color:var(--on-accent);cursor:pointer">Monthly</button>
+            <button type="button" data-trend-timeframe="12m" onclick="setTrendTimeframe('12m',this)" class="trend-timeframe-btn" style="padding:8px 12px;font-size:13px;font-weight:500;border:none;background:var(--surface-2);color:var(--muted);cursor:pointer">12 months</button>
           </div>
         </div>
 
-        <div class="rounded-xl border border-sada-lightBorder dark:border-sada-darkBorder overflow-hidden">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 dark:bg-slate-900/60 border-b border-sada-lightBorder dark:border-sada-darkBorder text-sada-textMutedLight dark:text-sada-textMutedDark font-semibold">
+        <!-- Chart -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Relative interest over time</span>
+            <span id="trends-source-badge" style="font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--muted);border:1px solid var(--border)">—</span>
+          </div>
+          <div style="height:220px;position:relative">
+            <canvas id="trendsChart"></canvas>
+            <div id="trends-empty-state" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;font-size:14px;color:var(--muted)">
+              No sufficient data for this keyword.
+            </div>
+          </div>
+        </div>
+
+        <!-- Region + queries -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px" id="trends-lower-grid">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Interest by region</div>
+            <div id="trends-region-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Top related queries</div>
+            <div id="trends-top-queries" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Rising queries</div>
+            <div id="trends-rising-queries" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════
+         SCREEN: KEYWORD MATRIX
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-keywords">
+      <div class="screen-inner">
+        <div class="screen-header">
+          <div>
+            <h1 class="screen-title">Keyword matrix</h1>
+            <div class="screen-desc">Direct URL routing for ExampleBrand landing pages and pricing plans.</div>
+          </div>
+          <div class="input-wrap" style="width:220px">
+            <span class="input-icon"><i data-lucide="search" style="width:14px;height:14px" aria-hidden="true"></i></span>
+            <input id="matrix-search" oninput="filterKeywords()" type="text" class="field-input" style="min-height:38px" placeholder="Filter keywords…">
+          </div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
               <tr>
-                <th class="py-3 px-4">#</th>
-                <th class="py-3 px-4">Keyword Phrase & Landing Target</th>
-                <th class="py-3 px-4">Funnel Type</th>
-                <th class="py-3 px-4 text-right">Action</th>
+                <th style="width:40px">#</th>
+                <th>Keyword phrase &amp; landing target</th>
+                <th>Funnel type</th>
+                <th style="text-align:right">Action</th>
               </tr>
             </thead>
-            <tbody id="keywords-table-body" class="divide-y border-sada-lightBorder dark:divide-sada-darkBorder font-medium"></tbody>
+            <tbody id="keywords-table-body"></tbody>
           </table>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- TAB 4: SAVED ARTICLES REPOSITORY -->
-    <section id="tab-repository" class="tab-content hidden flex flex-col gap-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-base md:text-lg font-bold flex items-center gap-2">
-            <i data-lucide="archive" class="w-5 h-5 text-sada-green"></i>
-            <span>ExampleBrand Content Library</span>
-          </h2>
-          <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark">Articles saved in <code>/generated_blogs</code> and local browser cache</p>
+    <!-- ══════════════════════════════
+         SCREEN: SAVED ARTICLES
+    ══════════════════════════════ -->
+    <div class="screen" id="screen-repository">
+      <div class="screen-inner">
+        <div class="screen-header">
+          <div>
+            <h1 class="screen-title">Saved articles</h1>
+            <div class="screen-desc">Articles saved in <code style="font-family:var(--mono);font-size:12px">/generated_blogs</code> and local browser cache.</div>
+          </div>
+          <button onclick="requestClearLibrary()" class="btn btn-danger btn-sm">
+            <i data-lucide="trash-2" style="width:14px;height:14px" aria-hidden="true"></i>
+            Clear library
+          </button>
         </div>
-        <button onclick="requestClearLibrary()" class="px-3.5 py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-medium flex items-center gap-1.5 transition-colors">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Browser Library
-        </button>
-      </div>
-
-      <div id="repository-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-    </section>
-
-  </main>
-
-  <!-- MODAL FOR CONFIRMATIONS (ZERO BROWSER CONFIRM CALLS) -->
-  <div id="confirm-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
-    <div class="bg-white dark:bg-sada-darkSurface border border-sada-lightBorder dark:border-sada-darkBorder p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
-        </div>
-        <div>
-          <h4 class="font-bold text-sm text-slate-900 dark:text-white">Confirm Action</h4>
-          <p class="text-xs text-sada-textMutedDark" id="confirm-modal-msg">Are you sure you want to proceed?</p>
-        </div>
-      </div>
-      <div class="flex items-center justify-end gap-2 pt-2">
-        <button onclick="closeConfirmModal(false)" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200">Cancel</button>
-        <button id="confirm-modal-ok-btn" onclick="closeConfirmModal(true)" class="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white">Proceed</button>
+        <div id="repository-grid" class="repo-grid"></div>
       </div>
     </div>
+
+  </div><!-- /screen-area -->
+</div><!-- /shell -->
+
+<!-- CONFIRM MODAL -->
+<div id="confirm-modal" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+      <div style="width:40px;height:40px;border-radius:var(--radius);background:var(--danger-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i data-lucide="alert-triangle" style="width:18px;height:18px;color:var(--danger)" aria-hidden="true"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:15px">Confirm action</div>
+        <p id="confirm-modal-msg" style="font-size:13px;color:var(--muted);margin-top:3px">Are you sure?</p>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="closeConfirmModal(false)" class="btn btn-secondary btn-sm">Cancel</button>
+      <button id="confirm-modal-ok-btn" onclick="closeConfirmModal(true)" class="btn btn-sm" style="background:var(--danger);color:var(--on-accent)">Delete</button>
+    </div>
   </div>
+</div>
 
-  <!-- TOAST NOTIFICATION CONTAINER -->
-  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+<!-- TOAST CONTAINER -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
-  <script>
-    // ExampleBrand Direct Routing
-    const PRICING_URL = "https://example.com/pricing-plan/";
-    const CONTACT_URL = "https://example.com/contact-us/";
+<!-- ─────────────────────────────────────
+     RESPONSIVE GRID HELPERS
+───────────────────────────────────── -->
+<style>
+@media(max-width:900px){
+  #trends-lower-grid{grid-template-columns:1fr!important}
+}
+</style>
 
-    const industryLinks = {
-      "Restaurant": "https://example.com/industries/restaurant-pos-system-software/",
-      "Stationery Shop": "https://example.com/industries/best-pos-software-for-stationery-shops/",
-      "Auto Spare Parts": "https://example.com/industries/pos-software-for-auto-spare-parts/",
-      "Electronics Shop": "https://example.com/industries/pos-software-for-electronics-shop/",
-      "Gym": "https://example.com/industries/pos-software-for-gym/",
-      "Clothing Store": "https://example.com/industries/pos-software-for-clothing-store/",
-      "Wholesale Business": "https://example.com/industries/pos-software-for-wholesale-business/",
-      "Salon": "https://example.com/industries/pos-software-for-salon/",
-      "Grocery Store": "https://example.com/industries/pos-software-for-grocery-store/",
-      "Bakery": "https://example.com/industries/pos-software-for-bakery/",
+<!-- ─────────────────────────────────────
+     JAVASCRIPT
+───────────────────────────────────── -->
+<script>
+/* ─── constants ─── */
+const PRICING_URL="https://example.com/pricing-plan/";
+const CONTACT_URL="https://example.com/contact-us/";
+const industryLinks={
+  "Restaurant":"https://example.com/industries/restaurant-pos-system-software/",
+  "Stationery Shop":"https://example.com/industries/best-pos-software-for-stationery-shops/",
+  "Auto Spare Parts":"https://example.com/industries/pos-software-for-auto-spare-parts/",
+  "Electronics Shop":"https://example.com/industries/pos-software-for-electronics-shop/",
+  "Gym":"https://example.com/industries/pos-software-for-gym/",
+  "Clothing Store":"https://example.com/industries/pos-software-for-clothing-store/",
+  "Wholesale Business":"https://example.com/industries/pos-software-for-wholesale-business/",
+  "Salon":"https://example.com/industries/pos-software-for-salon/",
+  "Grocery Store":"https://example.com/industries/pos-software-for-grocery-store/",
+  "Bakery":"https://example.com/industries/pos-software-for-bakery/"
+};
+
+/* ─── state ─── */
+let allKeywords=[];
+let serverFiles=[];
+let savedBlogs=[];
+let hiddenServerFiles=[];
+let currentTheme='light';
+let rawBlogContent='';
+let selectedH1Title='';
+let blogBrief={purpose:'',tone:'professional',questions:[]};
+let secondaryKeywordId=0;
+let cooldownTimer=null;
+let trendsChartInstance=null;
+let pendingConfirmAction=null;
+let sidebarCollapsed=false;
+let selectedTrendTimeframe='1m';
+
+try{savedBlogs=JSON.parse(localStorage.getItem('ExampleBrand_blogs')||'[]')}catch(e){savedBlogs=[]}
+try{hiddenServerFiles=JSON.parse(localStorage.getItem('ExampleBrand_hidden_files')||'[]')}catch(e){hiddenServerFiles=[]}
+try{currentTheme=localStorage.getItem('ExampleBrand_theme')||'light'}catch(e){}
+try{sidebarCollapsed=localStorage.getItem('ExampleBrand_sidebar_collapsed')==='1'}catch(e){}
+try{const s=localStorage.getItem('ExampleBrand_settings_open');if(s==='1')openSettings()}catch(e){}
+
+/* ─── init ─── */
+document.addEventListener('DOMContentLoaded',()=>{
+  initTheme();
+  if(sidebarCollapsed)applySidebarCollapse();
+  loadBackendPayloads();
+  lucide.createIcons();
+  updateHeaderCounters();
+  renderKeywordsTable(allKeywords);
+  renderRepositoryCards();
+  renderStudioQuickPicks();
+  renderRecentDrafts();
+});
+
+function loadBackendPayloads(){
+  try{
+    const el=document.getElementById('server-files-data');
+    if(el&&el.textContent.trim())serverFiles=JSON.parse(el.textContent);
+  }catch(e){serverFiles=[];}
+  try{
+    const el=document.getElementById('server-keywords-data');
+    if(el&&el.textContent.trim())allKeywords=JSON.parse(el.textContent);
+  }catch(e){
+    allKeywords=["Pharmacy Management System in Rawalpindi","POS Software for Bakery","FBR Digital Invoicing System Software in Pakistan","POS Software for Restaurant","Pharmacy Management System in Lahore"];
+  }
+}
+
+/* ─── theme ─── */
+function initTheme(){
+  document.documentElement.setAttribute('data-theme',currentTheme);
+  const icon=currentTheme==='dark'?'sun':'moon';
+  ['theme-icon','theme-icon-mobile','theme-icon-drawer'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.setAttribute('data-lucide',icon);}
+  });
+  lucide.createIcons();
+}
+function toggleTheme(){
+  currentTheme=currentTheme==='dark'?'light':'dark';
+  try{localStorage.setItem('ExampleBrand_theme',currentTheme)}catch(e){}
+  initTheme();
+}
+
+/* ─── sidebar collapse ─── */
+function toggleSidebar(){
+  sidebarCollapsed=!sidebarCollapsed;
+  applySidebarCollapse();
+  try{localStorage.setItem('ExampleBrand_sidebar_collapsed',sidebarCollapsed?'1':'0')}catch(e){}
+}
+function applySidebarCollapse(){
+  const sb=document.getElementById('sidebar');
+  const btn=document.getElementById('collapse-btn');
+  if(sidebarCollapsed){
+    sb.classList.add('collapsed');
+    btn.querySelector('[data-lucide]').setAttribute('data-lucide','panel-left-open');
+  }else{
+    sb.classList.remove('collapsed');
+    btn.querySelector('[data-lucide]').setAttribute('data-lucide','panel-left-close');
+  }
+  lucide.createIcons();
+}
+
+/* ─── mobile drawer ─── */
+function openDrawer(){
+  document.getElementById('mobile-drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('mobile-drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+/* ─── tab switching ─── */
+function switchTab(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    b.classList.remove('active');
+    b.removeAttribute('aria-current');
+  });
+
+  const screen=document.getElementById('screen-'+id);
+  if(screen)screen.classList.add('active');
+
+  // desktop sidebar
+  const btn=document.getElementById('tab-btn-'+id);
+  if(btn){btn.classList.add('active');btn.setAttribute('aria-current','page');}
+  // mobile drawer
+  const mbtn=document.getElementById('m-tab-btn-'+id);
+  if(mbtn){mbtn.classList.add('active');mbtn.setAttribute('aria-current','page');}
+
+  if(id==='repository')renderRepositoryCards();
+}
+
+/* ─── article settings collapsible ─── */
+function toggleSettings(){
+  const body=document.getElementById('settings-body');
+  const btn=document.getElementById('settings-toggle-btn');
+  const isOpen=body.classList.toggle('open');
+  btn.classList.toggle('open',isOpen);
+  btn.setAttribute('aria-expanded',isOpen.toString());
+  try{localStorage.setItem('ExampleBrand_settings_open',isOpen?'1':'0')}catch(e){}
+  lucide.createIcons();
+}
+function openSettings(){
+  const body=document.getElementById('settings-body');
+  const btn=document.getElementById('settings-toggle-btn');
+  body.classList.add('open');
+  btn.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+}
+
+/* ─── output state machine ─── */
+function setOutputState(state){
+  const ids=['studio-empty-state','brainstorm-state','generation-loader','markdown-rendered-view','markdown-raw-view'];
+  ids.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.style.display='none';
+  });
+  document.getElementById('generate-error').style.display='none';
+
+  if(state==='empty'){document.getElementById('studio-empty-state').style.display='flex';}
+  else if(state==='brainstorm'){document.getElementById('brainstorm-state').style.display='flex';}
+  else if(state==='loading'){document.getElementById('generation-loader').style.display='flex';}
+  else if(state==='rendered'){document.getElementById('markdown-rendered-view').style.display='block';}
+  else if(state==='raw'){document.getElementById('markdown-raw-view').style.display='block';}
+
+  // copy/download buttons
+  const hasCopy=(state==='rendered'||state==='raw')&&rawBlogContent;
+  ['btn-copy','btn-download'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.classList.toggle('disabled',!hasCopy);}
+  });
+}
+
+/* ─── recent drafts ─── */
+function renderRecentDrafts(){
+  const sec=document.getElementById('recent-drafts-section');
+  const et=document.getElementById('empty-title');
+  if(!sec)return;
+  const recent=savedBlogs.slice(0,3);
+  if(!recent.length){sec.innerHTML='';if(et)et.textContent='Start your first article';return;}
+  if(et)et.textContent='Start a new article';
+  sec.innerHTML=`<div class="section-label" style="margin-top:12px">Recent drafts</div><div class="draft-list">${
+    recent.map(b=>`<div class="draft-row" onclick="openDraft('${b.filename}')">
+      <i data-lucide="file-text" style="width:16px;height:16px;color:var(--muted);flex-shrink:0" aria-hidden="true"></i>
+      <span class="draft-title">${b.keyword}</span>
+      <span class="draft-meta">${b.wordCount?b.wordCount.toLocaleString()+' words':'Draft'}</span>
+    </div>`).join('')
+  }</div>`;
+  lucide.createIcons();
+}
+
+function openDraft(filename){
+  const blog=savedBlogs.find(b=>b.filename===filename);
+  if(!blog||!blog.content)return;
+  rawBlogContent=blog.content;
+  document.getElementById('markdown-rendered-view').innerHTML=marked.parse(blog.content);
+  document.getElementById('markdown-raw-view').value=blog.content;
+  document.getElementById('target-keyword').value=blog.keyword||'';
+  setOutputState('rendered');
+  setEditorTab('rendered');
+  updateMetrics({word_count:blog.wordCount||0,rate_per_1000:0,diagram_count:0,photo_count:0});
+  switchTab('studio');
+}
+
+/* ─── quick keyword chips ─── */
+function renderStudioQuickPicks(){
+  const wrap=document.getElementById('studio-quick-trends');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  const picks=["Bakery","Pharmacy","Restaurant","FBR Invoicing","Grocery Store"];
+  picks.forEach(term=>{
+    const btn=document.createElement('button');
+    btn.className='kw-chip';
+    btn.textContent=term;
+    btn.onclick=()=>{
+      wrap.querySelectorAll('.kw-chip').forEach(c=>c.classList.remove('selected'));
+      btn.classList.add('selected');
+      const kw=document.getElementById('target-keyword');
+      if(kw)kw.value=term+' POS software';
     };
+    wrap.appendChild(btn);
+  });
+  // "See all" link
+  const a=document.createElement('a');
+  a.href='#';a.style.cssText='font-size:13px;color:var(--accent);font-weight:500';
+  a.textContent='See all';
+  a.onclick=(e)=>{e.preventDefault();switchTab('trends')};
+  wrap.appendChild(a);
+}
 
-    // State Variables
-    let allKeywords = [];
-    let serverFiles = [];
-    let savedBlogs = JSON.parse(localStorage.getItem('ExampleBrand_blogs') || '[]');
-    let hiddenServerFiles = JSON.parse(localStorage.getItem('ExampleBrand_hidden_files') || '[]');
-    let currentTheme = localStorage.getItem('ExampleBrand_theme') || 'dark';
-    let rawBlogContent = "";
-    let selectedH1Title = "";
-    let blogBrief = { purpose: "", tone: "professional", questions: [] };
-    let secondaryKeywordId = 0;
-    let cooldownTimer = null;
-    let trendsChartInstance = null;
-    let pendingConfirmAction = null;
+function setKeyword(kw){
+  const input=document.getElementById('target-keyword');
+  if(input)input.value=kw;
+  clearTitleSelection();
+  switchTab('studio');
+  if(input)input.focus();
+  showToast('Keyword selected');
+}
 
-    function locateTitleEnd(text, title) {
-      // Mirrors app.py's _locate_title_end: tolerate minor wording
-      // differences from the model instead of only matching an exact
-      // substring, so a near-miss doesn't leave the whole line as one heading.
-      if (!title) return -1;
-      const lowerText = text.toLowerCase();
-      const lowerTitle = title.toLowerCase();
+/* ─── secondary keywords ─── */
+function addSecondaryKeyword(){
+  const list=document.getElementById('secondary-keyword-list');
+  const id=secondaryKeywordId++;
+  const row=document.createElement('div');
+  row.className='sec-kw-row';
+  row.dataset.secondaryRow=id;
+  row.innerHTML=`
+    <input type="text" data-secondary-keyword placeholder="e.g. inventory management"
+      class="field-input no-icon" style="flex:1;min-width:0;font-size:14px;min-height:38px">
+    <div class="stepper">
+      <button type="button" onclick="stepperDec(${id})" aria-label="Decrease">−</button>
+      <span id="stepper-val-${id}" data-secondary-count>2</span>
+      <button type="button" onclick="stepperInc(${id})" aria-label="Increase">+</button>
+    </div>
+    <button type="button" onclick="removeSecondaryKeyword(${id})" class="btn btn-ghost btn-sm" style="padding:6px;min-height:34px;color:var(--danger)" aria-label="Remove keyword">
+      <i data-lucide="x" style="width:14px;height:14px" aria-hidden="true"></i>
+    </button>`;
+  list.appendChild(row);
+  lucide.createIcons();
+  row.querySelector('[data-secondary-keyword]').focus();
+}
+function stepperInc(id){const el=document.getElementById('stepper-val-'+id);if(el){const v=parseInt(el.textContent);if(v<10)el.textContent=v+1;}}
+function stepperDec(id){const el=document.getElementById('stepper-val-'+id);if(el){const v=parseInt(el.textContent);if(v>1)el.textContent=v-1;}}
+function removeSecondaryKeyword(id){const row=document.querySelector('[data-secondary-row="'+id+'"]');if(row)row.remove();}
+function getSecondaryKeywords(){
+  return[...document.querySelectorAll('[data-secondary-row]')].map(row=>({
+    keyword:row.querySelector('[data-secondary-keyword]').value.trim(),
+    count:Number(row.querySelector('[data-secondary-count]').textContent)
+  })).filter(i=>i.keyword);
+}
 
-      const idx = lowerText.indexOf(lowerTitle);
-      if (idx >= 0) return idx + title.length;
+/* ─── counters ─── */
+function updateHeaderCounters(){
+  const kwCount=allKeywords.length;
+  const visible=serverFiles.filter(f=>!hiddenServerFiles.includes(f));
+  const blogCount=new Set([...savedBlogs.map(b=>b.filename),...visible]).size;
+  ['header-kw-count','m-header-kw-count'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=kwCount;});
+  ['header-blog-count','m-header-blog-count'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=blogCount;});
+}
 
-      let bestLen = 0;
-      let bestEnd = -1;
-      for (let start = 0; start < lowerText.length; start++) {
-        let len = 0;
-        while (len < lowerTitle.length && lowerText[start + len] === lowerTitle[len]) len++;
-        if (len > bestLen) {
-          bestLen = len;
-          bestEnd = start + len;
-        }
-      }
-      if (bestLen >= lowerTitle.length * 0.6) return bestEnd;
-      return -1;
+/* ─── stat animation ─── */
+const _statPrev={};
+function animateStat(id,toVal,label,suffix){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const from=parseFloat(_statPrev[id]||0);
+  const to=parseFloat(toVal);
+  _statPrev[id]=to;
+  if(isNaN(to)){el.textContent=label||toVal;return;}
+  const start=performance.now();
+  const dur=400;
+  function tick(now){
+    const t=Math.min((now-start)/dur,1);
+    const ease=1-Math.pow(1-t,3);
+    const cur=from+(to-from)*ease;
+    const disp=Number.isInteger(to)?Math.round(cur):cur.toFixed(1);
+    el.textContent=disp+(suffix||'');
+    if(t<1)requestAnimationFrame(tick);
+    else el.textContent=label||disp+(suffix||'');
+  }
+  requestAnimationFrame(tick);
+}
+
+function updateMetrics(data){
+  const words=data.word_count||0;
+  const density=data.rate_per_1000||0;
+  const diagrams=data.diagram_count||0;
+  const photos=data.photo_count||0;
+  const checks=Math.min(3,(diagrams>0?1:0)+(photos>0?1:0)+(words>=2000?1:0));
+
+  // labels
+  const wLabel=words>=2000?'Target reached':words.toLocaleString()+' / 2,000';
+  document.getElementById('metric-words-label').textContent=wLabel;
+  document.getElementById('metric-density-label').textContent=density.toFixed(1)+' / 8';
+  document.getElementById('metric-checks-label').textContent=checks+' / 3';
+
+  // bars (animate)
+  const wBar=document.getElementById('metric-words-bar');
+  const dBar=document.getElementById('metric-density-bar');
+  const cBar=document.getElementById('metric-checks-bar');
+  if(wBar)wBar.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
+  if(dBar)dBar.style.width=Math.min(100,Math.round((density/8)*100))+'%';
+  if(cBar)cBar.style.width=Math.round((checks/3)*100)+'%';
+
+  // health chip
+  const chip=document.getElementById('metric-health');
+  if(chip){
+    if(words>=2000&&density>=8){chip.textContent='Ready';chip.className='status-chip status-ready';}
+    else{chip.textContent='Needs work';chip.className='status-chip status-warn';}
+  }
+
+  // legacy IDs (kept for compatibility)
+  const mw=document.getElementById('metric-words');if(mw)mw.textContent=words;
+  const md=document.getElementById('metric-density');if(md)md.textContent=density;
+  const mdg=document.getElementById('metric-diagrams');if(mdg)mdg.textContent=diagrams;
+  const mp=document.getElementById('metric-photos');if(mp)mp.textContent=photos;
+  const mhb=document.getElementById('metric-health-bar');if(mhb)mhb.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
+}
+
+/* ─── loading steps ─── */
+let _stepTimer=null;
+function startLoadingSteps(){
+  for(let i=0;i<5;i++){
+    const step=document.getElementById('step-'+i);
+    const icon=document.getElementById('step-icon-'+i);
+    if(step){step.className='gen-step'+(i===0?' current':'');}
+    if(icon){
+      if(i===0)icon.innerHTML='<span class="step-spinner"></span>';
+      else icon.innerHTML='<i data-lucide="circle" style="width:14px;height:14px;color:var(--border)" aria-hidden="true"></i>';
     }
-
-    function splitHeadingFromIntro(headingText, title) {
-      let splitAt = locateTitleEnd(headingText, title);
-
-      if (splitAt < 0) {
-        const sentenceEnd = headingText.match(/[.!?](?:\s+|$)/);
-        if (sentenceEnd && sentenceEnd.index < 160) {
-          splitAt = sentenceEnd.index + sentenceEnd[0].length;
-        }
-      }
-
-      if (splitAt < 0 || splitAt >= headingText.length) {
-        return [headingText.trim(), ""];
-      }
-
-      const finalTitle = (title || headingText.slice(0, splitAt)).replace(/[\s:-]+$/, "");
-      let introduction = headingText.slice(splitAt).replace(/^[\s:-]+/, "");
-
-      const sentenceMatch = introduction.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
-      if (sentenceMatch) introduction = [sentenceMatch[1], sentenceMatch[2]].filter(Boolean).join("\n\n");
-
-      return [finalTitle, introduction];
-    }
-
-    function normalizePreviewMarkdown(content, selectedTitle = "") {
-      const body = (content || "").trim();
-      if (!body) return body;
-
-      const lines = body.split("\n");
-      const firstLine = lines[0].trim();
-      const title = selectedTitle.trim();
-
-      const headingMatch = firstLine.match(/^#{1,6}\s+(.+)$/);
-      const headingText = headingMatch ? headingMatch[1].trim() : firstLine;
-
-      const [finalTitle, introduction] = splitHeadingFromIntro(headingText, title);
-      const rest = lines.slice(1).join("\n").trim();
-      const combined = [introduction, rest].filter(Boolean).join("\n\n");
-      return `# ${finalTitle}${combined ? `\n\n${combined}` : ""}`;
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      initTheme();
-      loadBackendPayloads();
-      lucide.createIcons();
-      updateHeaderCounters();
-      renderKeywordsTable(allKeywords);
-      renderRepositoryCards();
-      renderStudioQuickPicks();
-    });
-
-    function loadBackendPayloads() {
-      try {
-        const filesEl = document.getElementById('server-files-data');
-        if (filesEl && filesEl.textContent.trim()) {
-          serverFiles = JSON.parse(filesEl.textContent);
-        }
-      } catch(e) {
-        serverFiles = [];
-      }
-
-      try {
-        const kwEl = document.getElementById('server-keywords-data');
-        if (kwEl && kwEl.textContent.trim()) {
-          allKeywords = JSON.parse(kwEl.textContent);
-        }
-      } catch(e) {
-        allKeywords = [
-          "Pharmacy Management System in Rawalpindi",
-          "POS Software for Bakery",
-          "FBR Digital Invoicing System Software in Pakistan",
-          "POS Software for Restaurant",
-          "Pharmacy Management System in Lahore"
-        ];
-      }
-    }
-
-    function initTheme() {
-      if (currentTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.documentElement.classList.remove('light');
-        document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.classList.add('light');
-        document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
-      }
-      lucide.createIcons();
-    }
-
-    function toggleTheme() {
-      currentTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
-      localStorage.setItem('ExampleBrand_theme', currentTheme);
-      initTheme();
-    }
-
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.className = "tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-slate-900 dark:hover:text-white";
-      });
-
-      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
-      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
-      if (activeBtn) {
-        activeBtn.className = "tab-btn flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sada-green bg-white dark:bg-sada-darkCard shadow-sm";
-      }
-
-      if (tabId === 'repository') renderRepositoryCards();
-    }
-
-    function setKeyword(kw) {
-      const input = document.getElementById('target-keyword');
-      input.value = kw;
-      clearTitleSelection();
-      switchTab('studio');
-      input.focus();
-      input.classList.add('ring-2', 'ring-sada-green');
-      setTimeout(() => input.classList.remove('ring-2', 'ring-sada-green'), 1000);
-      showToast(`Selected "${kw}"`);
-    }
-
-    function addSecondaryKeyword() {
-      const list = document.getElementById('secondary-keyword-list');
-      const id = secondaryKeywordId++;
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-2';
-      row.dataset.secondaryRow = id;
-      row.innerHTML = `
-        <input type="text" data-secondary-keyword placeholder="e.g. inventory management" class="min-w-0 flex-1 bg-white dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sada-green">
-        <select data-secondary-count class="w-24 bg-white dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sada-green" aria-label="Secondary keyword repetitions">
-          <option value="1">1 time</option>
-          <option value="2">2 times</option>
-          <option value="3">3 times</option>
-          <option value="4">4 times</option>
-          <option value="5">5 times</option>
-        </select>
-        <button type="button" onclick="removeSecondaryKeyword(${id})" class="p-2 text-sada-textMutedLight dark:text-sada-textMutedDark hover:text-rose-500" title="Remove keyword">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      `;
-      list.appendChild(row);
-      lucide.createIcons();
-      row.querySelector('[data-secondary-keyword]').focus();
-    }
-
-    function removeSecondaryKeyword(id) {
-      const row = document.querySelector(`[data-secondary-row="${id}"]`);
-      if (row) row.remove();
-    }
-
-    function getSecondaryKeywords() {
-      return [...document.querySelectorAll('[data-secondary-row]')]
-        .map(row => ({
-          keyword: row.querySelector('[data-secondary-keyword]').value.trim(),
-          count: Number(row.querySelector('[data-secondary-count]').value)
-        }))
-        .filter(item => item.keyword);
-    }
-
-    function updateHeaderCounters() {
-      document.getElementById('header-kw-count').innerText = allKeywords.length;
-      const visibleServerFiles = serverFiles.filter(fileName => !hiddenServerFiles.includes(fileName));
-      const visibleFiles = new Set([
-        ...savedBlogs.map(blog => blog.filename),
-        ...visibleServerFiles
-      ]);
-      document.getElementById('header-blog-count').innerText = visibleFiles.size;
-    }
-
-    function renderStudioQuickPicks() {
-      const studioPills = document.getElementById('studio-quick-trends');
-      if (!studioPills) return;
-      studioPills.innerHTML = "";
-      const picks = [
-        "POS Software for Bakery",
-        "Pharmacy Management System in Rawalpindi",
-        "FBR Digital Invoicing System Software in Pakistan",
-        "POS Software for Restaurant",
-        "POS Software for Grocery Store"
-      ];
-      picks.forEach(term => {
-        const btn = document.createElement('button');
-        btn.className = "px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-sada-green border border-emerald-200 dark:border-emerald-800/40 transition-all font-medium";
-        btn.innerText = term;
-        btn.onclick = () => setKeyword(term);
-        studioPills.appendChild(btn);
-      });
-    }
-
-    function openBriefPanel() {
-      const keyword = document.getElementById('target-keyword').value.trim();
-      if (!keyword) {
-        showToast("Please enter a target keyword first 🌱", "warning");
-        return;
-      }
-
-      const questions = [
-        `What should a reader searching for “${keyword}” understand or decide by the end?`,
-        `Which business, industry, city, authority, or real-world situation should the article focus on?`,
-        `What practical problem or questions should the article answer first?`,
-        `Are there specific features, steps, comparisons, examples, or facts you want included?`
-      ];
-      const container = document.getElementById('brief-questions');
-      container.innerHTML = questions.map((question, index) => `
-        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-          ${question}
-          <textarea data-brief-question="${index}" rows="2" class="mt-1.5 w-full bg-white dark:bg-sada-darkBg border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Add useful direction or leave blank"></textarea>
-        </label>
-      `).join('');
-      document.getElementById('blog-purpose').value = blogBrief.purpose;
-      document.getElementById('blog-tone').value = blogBrief.tone || 'professional';
-      document.getElementById('blog-brief-panel').classList.remove('hidden');
-      lucide.createIcons();
-    }
-
-    function closeBriefPanel() {
-      document.getElementById('blog-brief-panel').classList.add('hidden');
-    }
-
-    function saveBlogBrief() {
-      blogBrief.purpose = document.getElementById('blog-purpose').value.trim();
-      blogBrief.tone = document.getElementById('blog-tone').value;
-      blogBrief.questions = [...document.querySelectorAll('[data-brief-question]')]
-        .map(input => input.value.trim())
-        .filter(Boolean);
-      closeBriefPanel();
-      showToast("Article brief saved. The writer will use it during generation.");
-    }
-
-    async function readApiResponse(response) {
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(`The server returned ${response.status} instead of an API response. Check the Render service logs.`);
-      }
-      return response.json();
-    }
-
-    /* STEP 1: BRAINSTORM 6 TITLES VIA /api/titles/<keyword> */
-    async function fetchTitleOptions() {
-      const kw = document.getElementById('target-keyword').value.trim();
-      if (!kw) {
-        showToast("Please enter a target keyword first 🌱", "warning");
-        return;
-      }
-
-      const btn = document.getElementById('btn-fetch-titles');
-      const btnText = document.getElementById('btn-titles-text');
-      const box = document.getElementById('title-selection-box');
-      const grid = document.getElementById('title-options-grid');
-
-      btn.disabled = true;
-      btnText.innerText = "Brainstorming 6 Angles...";
-      btn.classList.add('opacity-70');
-
-      try {
-        const res = await fetch(`/api/titles/${encodeURIComponent(kw)}`);
-        const data = await readApiResponse(res);
-
-        if (!res.ok) throw new Error(data.error || "Title generation failed");
-
-        if (data.titles && data.titles.length > 0) {
-          grid.innerHTML = "";
-          data.titles.forEach((titleText, index) => {
-            const card = document.createElement('div');
-            card.className = "title-option-card p-4 rounded-xl border border-sada-lightBorder dark:border-sada-darkBorder bg-slate-50 dark:bg-sada-darkBg hover:border-sada-green transition-all cursor-pointer flex flex-col justify-between group";
-            card.onclick = () => selectTitleOption(card, titleText);
-            card.innerHTML = `
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-[10px] font-mono font-bold text-sada-green uppercase tracking-wider">Option #${index + 1}</span>
-                  <span class="status-indicator w-3 h-3 rounded-full border-2 border-slate-300 dark:border-slate-700 group-hover:border-sada-green transition-all"></span>
-                </div>
-                <p class="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug line-clamp-3">${titleText}</p>
-              </div>
-              <div class="mt-3 pt-2 border-t border-sada-lightBorder dark:border-sada-darkBorder flex items-center justify-between text-[10px] text-sada-textMutedLight dark:text-sada-textMutedDark font-medium">
-                <span>Click to lock H1</span>
-                <i data-lucide="check" class="w-3.5 h-3.5 text-sada-green opacity-0 check-icon"></i>
-              </div>
-            `;
-            grid.appendChild(card);
-          });
-
-          lucide.createIcons();
-          box.classList.remove('hidden');
-          box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          showToast("6 distinct angles ready! Pick one below ✨");
-        }
-      } catch (err) {
-        showToast(err.message, "error");
-      } finally {
-        btn.disabled = false;
-        btnText.innerText = "1. Brainstorm 6 Titles";
-        btn.classList.remove('opacity-70');
-      }
-    }
-
-    function selectTitleOption(cardElement, titleText) {
-      document.querySelectorAll('.title-option-card').forEach(c => {
-        c.classList.remove('border-sada-green', 'bg-emerald-50/20', 'dark:bg-emerald-950/30', 'ring-2', 'ring-sada-green');
-        const icon = c.querySelector('.check-icon');
-        const indicator = c.querySelector('.status-indicator');
-        if (icon) icon.classList.add('opacity-0');
-        if (indicator) indicator.className = "status-indicator w-3 h-3 rounded-full border-2 border-slate-300 dark:border-slate-700";
-      });
-
-      cardElement.classList.add('border-sada-green', 'bg-emerald-50/20', 'dark:bg-emerald-950/30', 'ring-2', 'ring-sada-green');
-      const activeIcon = cardElement.querySelector('.check-icon');
-      const activeIndicator = cardElement.querySelector('.status-indicator');
-      if (activeIcon) activeIcon.classList.remove('opacity-0');
-      if (activeIndicator) activeIndicator.className = "status-indicator w-3 h-3 rounded-full bg-sada-green border-2 border-sada-green";
-
-      selectedH1Title = titleText;
-      const genBtnText = document.getElementById('generate-btn-text');
-      if (genBtnText) genBtnText.innerText = "2. Generate with Selected H1";
-      showToast(`Selected H1: "${titleText}"`);
-    }
-
-    function clearTitleSelection() {
-      selectedH1Title = "";
-      document.querySelectorAll('.title-option-card').forEach(c => {
-        c.classList.remove('border-sada-green', 'bg-emerald-50/20', 'dark:bg-emerald-950/30', 'ring-2', 'ring-sada-green');
-        const icon = c.querySelector('.check-icon');
-        const indicator = c.querySelector('.status-indicator');
-        if (icon) icon.classList.add('opacity-0');
-        if (indicator) indicator.className = "status-indicator w-3 h-3 rounded-full border-2 border-slate-300 dark:border-slate-700";
-      });
-      const genBtnText = document.getElementById('generate-btn-text');
-      if (genBtnText) genBtnText.innerText = "2. Generate 2000+ Word Article";
-      const box = document.getElementById('title-selection-box');
-      if (box) box.classList.add('hidden');
-    }
-
-    /* STEP 2: GENERATE 2000+ WORD ARTICLE VIA /api/generate/<keyword> */
-    async function generateArticle() {
-      const chosenKeyword = document.getElementById('target-keyword').value.trim();
-      if (!chosenKeyword) {
-        showToast("Please enter or pick a target keyword first 🌱", "warning");
-        return;
-      }
-
-      const generateBtn = document.getElementById('generate-btn');
-      const btnText = document.getElementById('generate-btn-text');
-      const loader = document.getElementById('generation-loader');
-      const emptyState = document.getElementById('studio-empty-state');
-      const renderedView = document.getElementById('markdown-rendered-view');
-      const rawView = document.getElementById('markdown-raw-view');
-
-      generateBtn.disabled = true;
-      btnText.innerText = "Synthesizing 2,000+ Words...";
-      emptyState.classList.add('hidden');
-      renderedView.classList.add('hidden');
-      rawView.classList.add('hidden');
-      loader.classList.remove('hidden');
-
-      const params = new URLSearchParams();
-      const articleHeading = document.getElementById('article-heading').value.trim();
-      if (articleHeading || selectedH1Title) params.set('title', articleHeading || selectedH1Title);
-      params.set('primary_keyword', chosenKeyword);
-      const secondaryKeywords = getSecondaryKeywords();
-      if (secondaryKeywords.length) params.set('secondary_keywords', JSON.stringify(secondaryKeywords));
-      if (blogBrief.purpose) params.set('purpose', blogBrief.purpose);
-      if (blogBrief.tone) params.set('tone', blogBrief.tone);
-      if (blogBrief.questions.length) params.set('questions', blogBrief.questions.join('\n'));
-      const query = params.toString();
-      let url = `/api/generate/${encodeURIComponent(chosenKeyword)}${query ? `?${query}` : ''}`;
-
-      try {
-        const response = await fetch(url);
-        const data = await readApiResponse(response);
-
-        if (response.status === 429) {
-          triggerCooldown(data.error || "Cooldown in progress. Please wait a few seconds.");
-          throw new Error(data.error);
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || "Generation error encountered");
-        }
-
-        rawBlogContent = data.content;
-
-        // Telemetry Scorecard updates directly from Flask
-        document.getElementById('metric-words').innerText = data.word_count;
-        document.getElementById('metric-density').innerText = data.rate_per_1000;
-        document.getElementById('metric-diagrams').innerText = data.diagram_count;
-        document.getElementById('metric-photos').innerText = data.photo_count;
-
-        const healthBar = document.getElementById('metric-health-bar');
-        const healthText = document.getElementById('metric-health');
-        if (data.rate_per_1000 >= 8.0 && data.rate_per_1000 <= 10.0) {
-          healthText.innerText = "Natural (8-10/1k Grade A)";
-          healthText.className = "font-bold text-sada-green";
-          healthBar.className = "bg-sada-green h-full w-full transition-all duration-500 rounded-full";
-        } else {
-          healthText.innerText = `Density: ${data.rate_per_1000}/1k`;
-          healthText.className = "font-bold text-amber-500";
-          healthBar.className = "bg-amber-500 h-full w-3/4 transition-all duration-500 rounded-full";
-        }
-
-        // Save into local history
-        const newPost = {
-          id: Date.now(),
-          keyword: data.keyword,
-          filename: data.filename,
-          content: data.content,
-          wordCount: data.word_count,
-          createdAt: new Date().toLocaleDateString() + ' · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          preview: data.content.substring(0, 180) + '...'
-        };
-
-        savedBlogs.unshift(newPost);
-        hiddenServerFiles = hiddenServerFiles.filter(fileName => fileName !== newPost.filename);
-        localStorage.setItem('ExampleBrand_blogs', JSON.stringify(savedBlogs));
-        localStorage.setItem('ExampleBrand_hidden_files', JSON.stringify(hiddenServerFiles));
-        updateHeaderCounters();
-
-        const normalizedContent = normalizePreviewMarkdown(data.content, selectedH1Title);
-        renderedView.innerHTML = marked.parse(normalizedContent);
-        rawView.value = normalizedContent;
-        newPost.content = normalizedContent;
-        toggleEditorMode('rendered');
-        showToast("Article successfully synthesized & saved to disk! ✨");
-
-      } catch (err) {
-        showToast(err.message, "error");
-        emptyState.classList.remove('hidden');
-      } finally {
-        if (!cooldownTimer) {
-          generateBtn.disabled = false;
-          btnText.innerText = selectedH1Title ? "2. Generate with Selected H1" : "2. Generate 2000+ Word Article";
-        }
-        loader.classList.add('hidden');
-      }
-    }
-
-    function triggerCooldown(message) {
-      const match = message.match(/(\d+)\s+more\s+seconds/i);
-      let secondsLeft = match ? parseInt(match[1]) : 15;
-
-      const btn = document.getElementById('generate-btn');
-      const btnText = document.getElementById('generate-btn-text');
-      btn.disabled = true;
-
-      clearInterval(cooldownTimer);
-      cooldownTimer = setInterval(() => {
-        secondsLeft--;
-        if (secondsLeft <= 0) {
-          clearInterval(cooldownTimer);
-          cooldownTimer = null;
-          btn.disabled = false;
-          btnText.innerText = selectedH1Title ? "2. Generate with Selected H1" : "2. Generate 2000+ Word Article";
-          showToast("Cooldown elapsed. Ready to generate! ⚡");
-        } else {
-          btnText.innerText = `Cooldown (${secondsLeft}s)...`;
-        }
-      }, 1000);
-    }
-
-    /* PYTRENDS RADAR ENGINE */
-    let selectedTrendTimeframe = '1m';
-
-    function setTrendTimeframe(timeframe, button) {
-      selectedTrendTimeframe = timeframe;
-      document.querySelectorAll('.trend-timeframe-btn').forEach((item) => {
-        item.classList.remove('bg-sada-green', 'text-white', 'shadow-sm');
-        item.classList.add('text-sada-textMutedLight', 'dark:text-sada-textMutedDark');
-        item.setAttribute('aria-pressed', 'false');
-      });
-      button.classList.remove('text-sada-textMutedLight', 'dark:text-sada-textMutedDark');
-      button.classList.add('bg-sada-green', 'text-white', 'shadow-sm');
-      button.setAttribute('aria-pressed', 'true');
-      queryBackendTrends();
-    }
-
-    async function queryBackendTrends() {
-      const kw = document.getElementById('trend-search-input').value.trim();
-      const badge = document.getElementById('trends-source-badge');
-      const regionList = document.getElementById('trends-region-list');
-      const chart = document.getElementById('trendsChart');
-      const emptyState = document.getElementById('trends-empty-state');
-
-      if (!kw) {
-        showToast("Please enter a keyword to query trends first \ud83c\udf31", "warning");
-        return;
-      }
-
-      badge.innerText = "Fetching live PyTrends...";
-      badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-500 animate-pulse";
-
-      try {
-        const res = await fetch(`/api/trends?keyword=${encodeURIComponent(kw)}&timeframe=${selectedTrendTimeframe}&fresh=1`);
-        const data = await res.json();
-
-        const chartLabels = data.chart_labels || data.interest_over_time?.labels || [];
-        const chartValues = data.chart_values || data.interest_over_time?.values || [];
-        const regionData = data.region_data || [];
-        const topQueries = data.top_queries || [];
-        const risingQueries = data.rising_queries || [];
-        const hasData = chartLabels.length > 0 || regionData.length > 0 || topQueries.length > 0 || risingQueries.length > 0;
-
-        if (!hasData) {
-          if (trendsChartInstance) {
-            trendsChartInstance.destroy();
-            trendsChartInstance = null;
-          }
-          chart.classList.add('hidden');
-          emptyState.classList.remove('hidden');
-          badge.innerText = data.source === "rate-limited" ? "Google Trends rate limit" : "No sufficient data";
-          badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-sada-textMutedDark";
-        } else {
-          chart.classList.remove('hidden');
-          emptyState.classList.add('hidden');
-          badge.innerText = data.region_scope && data.region_scope.startsWith("Pakistan")
-            ? "Live Google Trends: Pakistan"
-            : `Live PyTrends: ${data.source}`;
-          badge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-sada-green";
-          renderTrendsChart(
-            chartLabels,
-            chartValues
-          );
-        }
-
-        const noDataMessage = data.source === "rate-limited"
-          ? `<p class="text-xs text-amber-600 dark:text-amber-400 py-3">Google Trends temporarily rate-limited this request. Wait a moment and try again.</p>`
-          : `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
-
-        const noRegionMessage = hasData
-          ? `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3 col-span-2">Google Trends returned no regional breakdown for this keyword and timeframe.</p>`
-          : noDataMessage;
-
-        regionList.innerHTML = regionData.length ? "" : noRegionMessage;
-        const maxRegionValue = regionData.length ? regionData[0].value : 100;
-        regionData.forEach((r) => {
-          const pct = maxRegionValue ? Math.round((r.value / maxRegionValue) * 100) : 0;
-          const div = document.createElement('div');
-          div.className = "flex items-center gap-3 py-1.5 text-xs";
-          div.innerHTML = `
-            <span class="w-28 shrink-0 font-medium text-slate-700 dark:text-slate-300 truncate" title="${r.region}">${r.region}</span>
-            <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div class="h-full bg-sada-green rounded-full" style="width:${pct}%"></div>
-            </div>
-            <span class="w-8 text-right font-mono text-sada-textMutedLight">${r.value}</span>
-          `;
-          regionList.appendChild(div);
-        });
-
-        renderRelatedQueries('trends-top-queries', topQueries, hasData, noDataMessage);
-        renderRelatedQueries('trends-rising-queries', risingQueries, hasData, noDataMessage);
-
-        lucide.createIcons();
-
-      } catch (err) {
-        if (trendsChartInstance) {
-          trendsChartInstance.destroy();
-          trendsChartInstance = null;
-        }
-        chart.classList.add('hidden');
-        emptyState.classList.remove('hidden');
-        const errMessage = `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No sufficient data was available from Google Trends.</p>`;
-        regionList.innerHTML = errMessage;
-        renderRelatedQueries('trends-top-queries', [], false, errMessage);
-        renderRelatedQueries('trends-rising-queries', [], false, errMessage);
-        badge.innerText = "Google Trends unavailable";
-        showToast("Google Trends could not return data for this search.", "warning");
-      }
-    }
-
-    function renderRelatedQueries(containerId, queries, hasData, emptyMessage) {
-      const container = document.getElementById(containerId);
-      if (!queries.length) {
-        container.innerHTML = hasData
-          ? `<p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark py-3">No related queries were returned for this keyword and timeframe.</p>`
-          : emptyMessage;
-        return;
-      }
-      container.innerHTML = "";
-      queries.forEach((q) => {
-        const row = document.createElement('div');
-        row.className = "flex items-center justify-between gap-2 py-1.5 px-3 rounded-lg bg-slate-50 dark:bg-sada-darkBg border border-sada-lightBorder dark:border-sada-darkBorder text-xs";
-        row.innerHTML = `
-          <span class="flex-1 min-w-0 font-medium text-slate-700 dark:text-slate-300 truncate" title="${q.query}">${q.query}</span>
-          <span class="font-mono text-[10px] text-sada-textMutedLight shrink-0">${q.value}</span>
-        `;
-        const selectBtn = document.createElement('button');
-        selectBtn.className = "shrink-0 px-2 py-1 rounded-md bg-sada-green/10 hover:bg-sada-green/20 text-sada-green font-semibold text-[10px]";
-        selectBtn.innerText = "Select & Write";
-        selectBtn.onclick = () => setKeyword(q.query);
-        row.appendChild(selectBtn);
-        container.appendChild(row);
-      });
-    }
-
-    function renderTrendsChart(labels, values) {
-      const ctx = document.getElementById('trendsChart').getContext('2d');
-      if (trendsChartInstance) {
-        trendsChartInstance.destroy();
-      }
-
-      trendsChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [
-            {
-              label: 'Relative Google Trends interest (0-100)',
-              data: values,
-              borderColor: '#00A86B',
-              backgroundColor: 'rgba(0, 168, 107, 0.15)',
-              borderWidth: 2,
-              pointRadius: 2,
-              pointHoverRadius: 4,
-              fill: true,
-              tension: 0.25
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Relative interest (0-100)' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
-            x: { grid: { display: false } }
-          },
-          plugins: {
-            legend: { labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11 } } }
-          }
-        }
-      });
-    }
-
-    function syncRawEdits() {
-      const rawView = document.getElementById('markdown-raw-view');
-      rawBlogContent = rawView.value;
-    }
-
-    function toggleEditorMode(mode) {
-      const renderedView = document.getElementById('markdown-rendered-view');
-      const rawView = document.getElementById('markdown-raw-view');
-      const btnRendered = document.getElementById('btn-view-rendered');
-      const btnRaw = document.getElementById('btn-view-raw');
-
-      if (mode === 'rendered') {
-        if (rawView.value) {
-          rawBlogContent = rawView.value;
-          const normalizedContent = normalizePreviewMarkdown(rawBlogContent);
-          rawBlogContent = normalizedContent;
-          rawView.value = normalizedContent;
-          renderedView.innerHTML = marked.parse(normalizedContent);
-        }
-        renderedView.classList.remove('hidden');
-        rawView.classList.add('hidden');
-        btnRendered.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-sada-darkCard text-sada-green shadow-sm border border-sada-lightBorder dark:border-sada-darkBorder";
-        btnRaw.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark";
-      } else {
-        rawView.value = rawBlogContent;
-        renderedView.classList.add('hidden');
-        rawView.classList.remove('hidden');
-        btnRaw.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-sada-darkCard text-sada-green shadow-sm border border-sada-lightBorder dark:border-sada-darkBorder";
-        btnRendered.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-sada-textMutedLight dark:text-sada-textMutedDark";
-      }
-    }
-
-    function copyCurrentContent() {
-      if (!rawBlogContent) return showToast("Nothing to copy yet!", "warning");
-      const ta = document.createElement("textarea");
-      ta.value = rawBlogContent;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      showToast("Copied Markdown to clipboard! 📋");
-    }
-
-    function downloadCurrentBlog() {
-      if (!rawBlogContent) return showToast("Nothing to save yet!", "warning");
-      const kw = document.getElementById('target-keyword').value || "seo_blog";
-      const blob = new Blob([rawBlogContent], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${kw.toLowerCase().replace(/\s+/g, '_')}.md`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    function renderKeywordsTable(list) {
-      const tbody = document.getElementById('keywords-table-body');
-      tbody.innerHTML = "";
-
-      list.slice(0, 80).forEach((kw, idx) => {
-        const targetUrl = PRICING_URL;
-        const isIndustry = kw.toLowerCase().includes("for");
-        const badgeColor = isIndustry 
-          ? "bg-emerald-100 dark:bg-emerald-950 text-sada-green border-emerald-300 dark:border-emerald-800" 
-          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700";
-        const badgeLabel = isIndustry ? "Industry Funnel" : "Pricing Destination";
-
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-slate-50 dark:hover:bg-sada-darkBg/60 transition-colors";
-        tr.innerHTML = `
-          <td class="py-3 px-4 font-mono text-sada-textMutedLight dark:text-sada-textMutedDark">${idx + 1}</td>
-          <td class="py-3 px-4 font-semibold text-slate-800 dark:text-slate-100">
-            <div>${kw}</div>
-            <a href="${targetUrl}" target="_blank" rel="noopener" class="text-[10px] text-sada-green hover:underline font-mono truncate max-w-xs block">${targetUrl}</a>
-          </td>
-          <td class="py-3 px-4">
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeColor}">${badgeLabel}</span>
-          </td>
-          <td class="py-3 px-4 text-right">
-            <button onclick="setKeyword('${kw.replace(/'/g, "\\'")}')" class="px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-sada-green hover:text-white text-sada-green font-semibold transition-all text-[11px]">
-              Use in Studio
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function filterKeywords() {
-      const search = document.getElementById('matrix-search').value.toLowerCase();
-      const filtered = allKeywords.filter(k => k.toLowerCase().includes(search));
-      renderKeywordsTable(filtered);
-    }
-
-    function renderRepositoryCards() {
-      const grid = document.getElementById('repository-grid');
-      grid.innerHTML = "";
-
-      const allFiles = [...savedBlogs];
-      serverFiles.forEach(fileName => {
-        if (!hiddenServerFiles.includes(fileName) && !allFiles.some(b => b.filename === fileName)) {
-          allFiles.push({
-            id: fileName,
-            keyword: fileName.replace(/_/g, ' ').replace('.md', ''),
-            filename: fileName,
-            isServer: true,
-            createdAt: 'On Server Disk',
-            wordCount: '2000+',
-            preview: 'Saved in generated_blogs/ directory on your server...'
-          });
-        }
-      });
-
-      if (allFiles.length === 0) {
-        grid.innerHTML = `<div class="col-span-3 text-center py-12 text-sada-textMutedLight dark:text-sada-textMutedDark">
-          <p class="font-bold">No articles in your library yet.</p>
-        </div>`;
-        return;
-      }
-
-      allFiles.forEach((blog) => {
-        const card = document.createElement('div');
-        card.className = "p-5 rounded-2xl border border-sada-lightBorder dark:border-sada-darkBorder bg-white dark:bg-sada-darkSurface flex flex-col justify-between shadow-sada-card";
-        card.innerHTML = `
+  }
+  lucide.createIcons();
+  let cur=0;
+  _stepTimer=setInterval(()=>{
+    if(cur<4){_markStepDone(cur);cur++;_setStepCurrent(cur);}
+  },1800);
+}
+function stopLoadingSteps(){clearInterval(_stepTimer);_stepTimer=null;for(let i=0;i<5;i++)_markStepDone(i);}
+function _markStepDone(i){
+  const step=document.getElementById('step-'+i);
+  const icon=document.getElementById('step-icon-'+i);
+  if(step)step.className='gen-step done';
+  if(icon)icon.innerHTML='<i data-lucide="check" style="width:14px;height:14px;color:var(--accent)" aria-hidden="true"></i>';
+  lucide.createIcons();
+}
+function _setStepCurrent(i){
+  const step=document.getElementById('step-'+i);
+  const icon=document.getElementById('step-icon-'+i);
+  if(step)step.className='gen-step current';
+  if(icon)icon.innerHTML='<span class="step-spinner"></span>';
+}
+
+/* ─── API helpers ─── */
+async function readApiResponse(res){
+  const ct=res.headers.get('content-type')||'';
+  if(!ct.includes('application/json'))throw new Error('The server returned '+res.status+'. Check service logs.');
+  return res.json();
+}
+
+/* ─── BRAINSTORM TITLES ─── */
+async function fetchTitleOptions(){
+  const kw=document.getElementById('target-keyword').value.trim();
+  if(!kw){showToast('Enter a primary keyword first','warning');return;}
+  const btn=document.getElementById('btn-fetch-titles');
+  const btnText=document.getElementById('btn-titles-text');
+  btn.disabled=true;
+  btnText.textContent='Thinking…';
+
+  // show skeleton
+  const grid=document.getElementById('title-options-grid');
+  grid.innerHTML=Array(6).fill('<div class="skel-card skeleton" style="border-radius:var(--radius)"></div>').join('');
+  setOutputState('brainstorm');
+
+  try{
+    const res=await fetch('/api/titles/'+encodeURIComponent(kw));
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Title generation failed');
+    if(data.titles&&data.titles.length){
+      grid.innerHTML='';
+      data.titles.forEach((t,i)=>{
+        const card=document.createElement('div');
+        card.className='brainstorm-card';
+        card.style.animationDelay=(i*40)+'ms';
+        card.tabIndex=0;
+        card.setAttribute('role','button');
+        card.innerHTML=`
           <div>
-            <div class="flex items-center justify-between text-[11px] text-sada-textMutedLight dark:text-sada-textMutedDark mb-2">
-              <span>${blog.createdAt}</span>
-              <span class="font-mono text-sada-green font-semibold">${blog.wordCount} words</span>
-            </div>
-            <h3 class="font-bold text-sm text-slate-800 dark:text-slate-100 line-clamp-2">${blog.keyword}</h3>
-            <p class="text-xs text-sada-textMutedLight dark:text-sada-textMutedDark mt-2 line-clamp-3 leading-relaxed">${blog.preview}</p>
+            <div class="brainstorm-num">Option ${i+1}</div>
+            <div class="brainstorm-text">${t}</div>
           </div>
-          <div class="mt-4 pt-3 border-t border-sada-lightBorder dark:border-sada-darkBorder flex items-center justify-between">
-            <a href="/blog/${blog.filename}" target="_blank" class="text-xs font-bold text-sada-green hover:underline flex items-center gap-1">Open Reader &rarr;</a>
-            <button onclick="requestDeleteBlog('${blog.filename}')" class="text-xs text-rose-500 hover:text-rose-600 p-1" title="Delete">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span class="bc-check" style="display:none;align-items:center;gap:4px;font-size:13px;color:var(--accent)">
+              <i data-lucide="check" style="width:14px;height:14px" aria-hidden="true"></i> Selected
+            </span>
+            <button class="bc-use btn btn-ghost btn-sm" style="font-size:12px;padding:5px 10px">Use this title</button>
+          </div>`;
+        card.onclick=()=>selectTitleOption(card,t);
+        card.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectTitleOption(card,t);}};
         grid.appendChild(card);
       });
-
       lucide.createIcons();
+      showToast('6 title options ready');
     }
+  }catch(err){
+    setOutputState('empty');
+    showToast(err.message,'error');
+  }finally{
+    btn.disabled=false;
+    btnText.textContent='Brainstorm titles';
+  }
+}
 
-    function requestDeleteBlog(filename) {
-      document.getElementById('confirm-modal-msg').innerText = "Remove this article from the browser library?";
-      pendingConfirmAction = () => {
-        savedBlogs = savedBlogs.filter(b => b.filename !== filename);
-        if (serverFiles.includes(filename) && !hiddenServerFiles.includes(filename)) {
-          hiddenServerFiles.push(filename);
-        }
-        localStorage.setItem('ExampleBrand_blogs', JSON.stringify(savedBlogs));
-        localStorage.setItem('ExampleBrand_hidden_files', JSON.stringify(hiddenServerFiles));
-        renderRepositoryCards();
-        updateHeaderCounters();
-        showToast("Article removed from browser library");
-      };
-      document.getElementById('confirm-modal').classList.remove('hidden');
-      document.getElementById('confirm-modal').classList.add('flex');
+function selectTitleOption(cardEl,titleText){
+  document.querySelectorAll('.brainstorm-card').forEach(c=>{
+    c.classList.remove('selected');
+    const chk=c.querySelector('.bc-check');const use=c.querySelector('.bc-use');
+    if(chk)chk.style.display='none';if(use)use.style.display='';
+  });
+  cardEl.classList.add('selected');
+  const chk=cardEl.querySelector('.bc-check');const use=cardEl.querySelector('.bc-use');
+  if(chk)chk.style.display='flex';if(use)use.style.display='none';
+  selectedH1Title=titleText;
+  const heading=document.getElementById('article-heading');
+  if(heading)heading.value=titleText;
+  document.getElementById('generate-btn-text').textContent='Generate article';
+  showToast('Title selected and set as heading');
+}
+
+function clearTitleSelection(){
+  selectedH1Title='';
+  document.querySelectorAll('.brainstorm-card').forEach(c=>{
+    c.classList.remove('selected');
+    const chk=c.querySelector('.bc-check');const use=c.querySelector('.bc-use');
+    if(chk)chk.style.display='none';if(use)use.style.display='';
+  });
+  document.getElementById('generate-btn-text').textContent='Generate article';
+  setOutputState('empty');
+  renderRecentDrafts();
+}
+
+/* ─── GENERATE ARTICLE ─── */
+async function generateArticle(){
+  const kw=document.getElementById('target-keyword').value.trim();
+  if(!kw){showToast('Enter a primary keyword first','warning');return;}
+  const genBtn=document.getElementById('generate-btn');
+  const genText=document.getElementById('generate-btn-text');
+  genBtn.disabled=true;
+  genText.textContent='';
+  genBtn.insertAdjacentHTML('afterbegin','<span class="btn-spinner"></span>');
+  const spinner=genBtn.querySelector('.btn-spinner');
+
+  setOutputState('loading');
+  startLoadingSteps();
+  document.getElementById('generate-error').style.display='none';
+
+  const params=new URLSearchParams();
+  const heading=document.getElementById('article-heading').value.trim();
+  if(heading||selectedH1Title)params.set('title',heading||selectedH1Title);
+  params.set('primary_keyword',kw);
+  const sec=getSecondaryKeywords();
+  if(sec.length)params.set('secondary_keywords',JSON.stringify(sec));
+  const purpose=document.getElementById('blog-purpose').value.trim();
+  const tone=document.getElementById('blog-tone').value;
+  if(purpose)params.set('purpose',purpose);
+  if(tone)params.set('tone',tone);
+  const q=params.toString();
+  const url='/api/generate/'+encodeURIComponent(kw)+(q?'?'+q:'');
+
+  try{
+    const response=await fetch(url);
+    const data=await readApiResponse(response);
+    if(response.status===429){triggerCooldown(data.error||'Cooldown active.');throw new Error(data.error);}
+    if(!response.ok)throw new Error(data.error||'Generation failed. Try again.');
+
+    stopLoadingSteps();
+    rawBlogContent=data.content;
+
+    // update metrics
+    updateMetrics(data);
+
+    // save
+    const newPost={
+      id:Date.now(),keyword:data.keyword,filename:data.filename,
+      content:data.content,wordCount:data.word_count,
+      createdAt:new Date().toLocaleDateString()+' · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+      preview:data.content.substring(0,180)+'…'
+    };
+    savedBlogs.unshift(newPost);
+    hiddenServerFiles=hiddenServerFiles.filter(f=>f!==newPost.filename);
+    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    updateHeaderCounters();
+
+    const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
+    rawBlogContent=normalized;
+    newPost.content=normalized;
+    document.getElementById('markdown-rendered-view').innerHTML=marked.parse(normalized);
+    document.getElementById('markdown-raw-view').value=normalized;
+    setOutputState('rendered');
+    setEditorTab('rendered');
+    showToast('Article generated');
+
+  }catch(err){
+    stopLoadingSteps();
+    setOutputState('empty');
+    renderRecentDrafts();
+    const errEl=document.getElementById('generate-error');
+    const errMsg=document.getElementById('generate-error-msg');
+    if(errMsg)errMsg.textContent=err.message||'Generation failed. Try again.';
+    if(errEl){errEl.style.display='flex';errEl.classList.add('shake');setTimeout(()=>errEl.classList.remove('shake'),400);}
+    if(!cooldownTimer)showToast(err.message||'Generation failed','error');
+  }finally{
+    if(spinner&&spinner.parentNode===genBtn)genBtn.removeChild(spinner);
+    if(!cooldownTimer){
+      genBtn.disabled=false;
+      genText.textContent='Generate article';
     }
+  }
+}
 
-    function requestClearLibrary() {
-      document.getElementById('confirm-modal-msg').innerText = "Clear all articles from the browser library?";
-      pendingConfirmAction = () => {
-        savedBlogs = [];
-        hiddenServerFiles = [...new Set([...hiddenServerFiles, ...serverFiles])];
-        localStorage.removeItem('ExampleBrand_blogs');
-        localStorage.setItem('ExampleBrand_hidden_files', JSON.stringify(hiddenServerFiles));
-        renderRepositoryCards();
-        updateHeaderCounters();
-        showToast("Browser library cleared");
-      };
-      document.getElementById('confirm-modal').classList.remove('hidden');
-      document.getElementById('confirm-modal').classList.add('flex');
+function triggerCooldown(message){
+  const match=message.match(/(\d+)\s+more\s+seconds/i);
+  let sec=match?parseInt(match[1]):15;
+  const btn=document.getElementById('generate-btn');
+  const text=document.getElementById('generate-btn-text');
+  btn.disabled=true;
+  clearInterval(cooldownTimer);
+  cooldownTimer=setInterval(()=>{
+    sec--;
+    if(sec<=0){clearInterval(cooldownTimer);cooldownTimer=null;btn.disabled=false;text.textContent='Generate article';showToast('Ready to generate');}
+    else{text.textContent='Wait '+sec+'s…';}
+  },1000);
+}
+
+/* ─── editor tabs ─── */
+function setEditorTab(mode){
+  const btnR=document.getElementById('btn-view-rendered');
+  const btnRaw=document.getElementById('btn-view-raw');
+  if(mode==='rendered'){
+    btnR.classList.add('active');btnR.setAttribute('aria-selected','true');
+    btnRaw.classList.remove('active');btnRaw.setAttribute('aria-selected','false');
+  }else{
+    btnRaw.classList.add('active');btnRaw.setAttribute('aria-selected','true');
+    btnR.classList.remove('active');btnR.setAttribute('aria-selected','false');
+  }
+}
+
+function toggleEditorMode(mode){
+  const rendered=document.getElementById('markdown-rendered-view');
+  const raw=document.getElementById('markdown-raw-view');
+  setEditorTab(mode);
+  if(mode==='rendered'){
+    if(raw.value){rawBlogContent=raw.value;rendered.innerHTML=marked.parse(rawBlogContent);}
+    setOutputState('rendered');
+  }else{
+    raw.value=rawBlogContent;
+    setOutputState('raw');
+  }
+}
+
+function syncRawEdits(){rawBlogContent=document.getElementById('markdown-raw-view').value;}
+
+function copyCurrentContent(){
+  if(!rawBlogContent){showToast('No content yet','warning');return;}
+  const ta=document.createElement('textarea');
+  ta.value=rawBlogContent;ta.style.cssText='position:fixed;opacity:0';
+  document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  showToast('Copied to clipboard');
+}
+
+function downloadCurrentBlog(){
+  if(!rawBlogContent){showToast('No content yet','warning');return;}
+  const kw=document.getElementById('target-keyword').value||'seo_blog';
+  const blob=new Blob([rawBlogContent],{type:'text/markdown;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=kw.toLowerCase().replace(/\s+/g,'_')+'.md';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  showToast('Downloaded');
+}
+
+/* ─── markdown normalization (unchanged logic) ─── */
+function locateTitleEnd(text,title){
+  if(!title)return -1;
+  const lt=text.toLowerCase(),lti=title.toLowerCase();
+  const idx=lt.indexOf(lti);if(idx>=0)return idx+title.length;
+  let bestLen=0,bestEnd=-1;
+  for(let s=0;s<lt.length;s++){let l=0;while(l<lti.length&&lt[s+l]===lti[l])l++;if(l>bestLen){bestLen=l;bestEnd=s+l;}}
+  if(bestLen>=lti.length*0.6)return bestEnd;
+  return -1;
+}
+function splitHeadingFromIntro(ht,title){
+  let at=locateTitleEnd(ht,title);
+  if(at<0){const sm=ht.match(/[.!?](?:\s+|$)/);if(sm&&sm.index<160)at=sm.index+sm[0].length;}
+  if(at<0||at>=ht.length)return[ht.trim(),''];
+  const ft=(title||ht.slice(0,at)).replace(/[\s:-]+$/,'');
+  let intro=ht.slice(at).replace(/^[\s:-]+/,'');
+  const sm=intro.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
+  if(sm)intro=[sm[1],sm[2]].filter(Boolean).join('\n\n');
+  return[ft,intro];
+}
+function normalizePreviewMarkdown(content,selectedTitle=''){
+  const body=(content||'').trim();if(!body)return body;
+  const lines=body.split('\n');const firstLine=lines[0].trim();const title=selectedTitle.trim();
+  const hm=firstLine.match(/^#{1,6}\s+(.+)$/);const ht=hm?hm[1].trim():firstLine;
+  const[ft,intro]=splitHeadingFromIntro(ht,title);
+  const rest=lines.slice(1).join('\n').trim();
+  const combined=[intro,rest].filter(Boolean).join('\n\n');
+  return'# '+ft+(combined?'\n\n'+combined:'');
+}
+
+/* ─── TRENDS ─── */
+function setTrendTimeframe(tf,btn){
+  selectedTrendTimeframe=tf;
+  document.querySelectorAll('.trend-timeframe-btn').forEach(b=>{
+    b.style.background='var(--surface-2)';b.style.color='var(--muted)';b.setAttribute('aria-pressed','false');
+  });
+  btn.style.background='var(--accent)';btn.style.color='var(--on-accent)';btn.setAttribute('aria-pressed','true');
+  queryBackendTrends();
+}
+
+async function queryBackendTrends(){
+  const kw=document.getElementById('trend-search-input').value.trim();
+  const badge=document.getElementById('trends-source-badge');
+  const rl=document.getElementById('trends-region-list');
+  const chart=document.getElementById('trendsChart');
+  const empty=document.getElementById('trends-empty-state');
+  if(!kw){showToast('Enter a keyword first','warning');return;}
+  badge.textContent='Fetching…';
+  try{
+    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe='+selectedTrendTimeframe+'&fresh=1');
+    const data=await res.json();
+    const labels=data.chart_labels||data.interest_over_time?.labels||[];
+    const values=data.chart_values||data.interest_over_time?.values||[];
+    const regions=data.region_data||[];
+    const topQ=data.top_queries||[];
+    const risingQ=data.rising_queries||[];
+    const has=labels.length>0||regions.length>0||topQ.length>0||risingQ.length>0;
+    if(!has){
+      if(trendsChartInstance){trendsChartInstance.destroy();trendsChartInstance=null;}
+      chart.style.display='none';empty.style.display='flex';
+      badge.textContent='No data';
+    }else{
+      chart.style.display='block';empty.style.display='none';
+      badge.textContent=data.region_scope?.startsWith('Pakistan')?'Google Trends · Pakistan':'PyTrends · '+data.source;
+      renderTrendsChart(labels,values);
     }
+    const noMsg='<p style="font-size:13px;color:var(--muted);padding:6px 0">No data returned.</p>';
+    rl.innerHTML=regions.length?'':noMsg;
+    const mx=regions.length?regions[0].value:100;
+    regions.forEach(r=>{
+      const pct=mx?Math.round((r.value/mx)*100):0;
+      const d=document.createElement('div');
+      d.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0';
+      d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.region}">${r.region}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
+      rl.appendChild(d);
+    });
+    renderRelatedQueries('trends-top-queries',topQ,has,noMsg);
+    renderRelatedQueries('trends-rising-queries',risingQ,has,noMsg);
+    lucide.createIcons();
+  }catch(err){
+    if(trendsChartInstance){trendsChartInstance.destroy();trendsChartInstance=null;}
+    chart.style.display='none';empty.style.display='flex';
+    badge.textContent='Unavailable';
+    showToast('Trends unavailable','warning');
+  }
+}
 
-    function closeConfirmModal(confirmed) {
-      document.getElementById('confirm-modal').classList.add('hidden');
-      document.getElementById('confirm-modal').classList.remove('flex');
-      if (confirmed && pendingConfirmAction) {
-        pendingConfirmAction();
-      }
-      pendingConfirmAction = null;
+function renderRelatedQueries(cid,queries,has,noMsg){
+  const el=document.getElementById(cid);
+  if(!queries.length){el.innerHTML=has?'<p style="font-size:13px;color:var(--muted);padding:6px 0">No related queries.</p>':noMsg;return;}
+  el.innerHTML='';
+  queries.forEach(q=>{
+    const row=document.createElement('div');
+    row.className='trends-query-row';
+    row.innerHTML=`<span class="trends-query-title" title="${q.query}">${q.query}</span><span class="trends-query-val">${q.value}</span>`;
+    const btn=document.createElement('button');
+    btn.className='btn btn-secondary btn-sm';btn.style.flexShrink='0';
+    btn.textContent='Use in Studio';
+    btn.onclick=()=>setKeyword(q.query);
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
+}
+
+function renderTrendsChart(labels,values){
+  const ctx=document.getElementById('trendsChart').getContext('2d');
+  if(trendsChartInstance)trendsChartInstance.destroy();
+  trendsChartInstance=new Chart(ctx,{
+    type:'line',
+    data:{labels,datasets:[{label:'Relative interest',data:values,borderColor:'var(--accent)',backgroundColor:'rgba(31,122,92,0.07)',borderWidth:2,pointRadius:2,pointHoverRadius:4,fill:true,tension:.3}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:100,grid:{color:'rgba(0,0,0,.04)'}},x:{grid:{display:false}}},plugins:{legend:{labels:{color:'var(--muted)',font:{family:'"DM Sans"',size:12}}}}}
+  });
+}
+
+/* ─── KEYWORD TABLE ─── */
+function renderKeywordsTable(list){
+  const tbody=document.getElementById('keywords-table-body');
+  tbody.innerHTML='';
+  list.slice(0,80).forEach((kw,idx)=>{
+    const isIndustry=kw.toLowerCase().includes('for');
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td style="color:var(--muted);font-family:var(--mono);font-size:12px">${idx+1}</td>
+      <td>
+        <div style="font-weight:500">${kw}</div>
+        <a href="${PRICING_URL}" target="_blank" rel="noopener" style="font-size:11px;font-family:var(--mono);color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${PRICING_URL}</a>
+      </td>
+      <td><span style="padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;background:${isIndustry?'var(--accent-soft)':'var(--surface-2)'};color:${isIndustry?'var(--accent)':'var(--muted)'};border:1px solid var(--border)">${isIndustry?'Industry funnel':'Pricing destination'}</span></td>
+      <td style="text-align:right"><button onclick="setKeyword('${kw.replace(/'/g,"\\'")}');switchTab('studio')" class="btn btn-secondary btn-sm">Use in Studio</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function filterKeywords(){
+  const s=document.getElementById('matrix-search').value.toLowerCase();
+  renderKeywordsTable(allKeywords.filter(k=>k.toLowerCase().includes(s)));
+}
+
+/* ─── REPOSITORY ─── */
+function renderRepositoryCards(){
+  const grid=document.getElementById('repository-grid');
+  grid.innerHTML='';
+  const all=[...savedBlogs];
+  serverFiles.forEach(f=>{
+    if(!hiddenServerFiles.includes(f)&&!all.some(b=>b.filename===f)){
+      all.push({id:f,keyword:f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,createdAt:'On server',wordCount:'2000+',preview:'Saved in generated_blogs/ directory.'});
     }
+  });
+  if(!all.length){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:48px 0;color:var(--muted)">
+      <div style="color:var(--border);margin-bottom:12px"><i data-lucide="file-text" style="width:40px;height:40px" aria-hidden="true"></i></div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">No saved articles yet</div>
+      <button onclick="switchTab('studio')" class="btn btn-primary btn-sm">Write an article</button>
+    </div>`;
+    lucide.createIcons();return;
+  }
+  all.forEach(blog=>{
+    const card=document.createElement('div');
+    card.className='repo-card';
+    card.innerHTML=`
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px">
+          <span>${blog.createdAt}</span>
+          <span style="font-family:var(--mono);font-weight:600;color:var(--accent)">${(blog.wordCount||'').toLocaleString()} words</span>
+        </div>
+        <div style="font-weight:700;font-size:14px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${blog.keyword}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${blog.preview||''}</div>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <a href="/blog/${blog.filename}" target="_blank" style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:underline;text-underline-offset:3px">Open →</a>
+        <div style="display:flex;gap:4px">
+          <button onclick="openDraft('${blog.filename}')" class="btn btn-ghost btn-sm" style="font-size:12px">Load in Studio</button>
+          <button onclick="requestDeleteBlog('${blog.filename}')" class="btn btn-danger btn-sm" aria-label="Delete article">
+            <i data-lucide="trash-2" style="width:14px;height:14px" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+  lucide.createIcons();
+}
 
-    function showToast(message, type = "success") {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      let borderClass = type === "warning" 
-        ? "border-amber-400 text-amber-500 bg-amber-50 dark:bg-amber-950/80" 
-        : (type === "error" ? "border-rose-400 text-rose-500 bg-rose-50 dark:bg-rose-950/80" : "border-sada-green text-sada-green bg-white dark:bg-sada-darkCard");
-      toast.className = `px-4 py-3 rounded-xl border shadow-sada flex items-center gap-2.5 text-xs font-semibold transition-all duration-300 transform translate-y-2 pointer-events-auto ${borderClass}`;
-      toast.innerHTML = `<span>${message}</span>`;
-      container.appendChild(toast);
+function requestDeleteBlog(filename){
+  document.getElementById('confirm-modal-msg').textContent='Remove "'+filename+'" from the library?';
+  pendingConfirmAction=()=>{
+    savedBlogs=savedBlogs.filter(b=>b.filename!==filename);
+    if(serverFiles.includes(filename)&&!hiddenServerFiles.includes(filename))hiddenServerFiles.push(filename);
+    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Article removed');
+  };
+  document.getElementById('confirm-modal').classList.add('open');
+}
+function requestClearLibrary(){
+  document.getElementById('confirm-modal-msg').textContent='Clear all articles from the browser library?';
+  pendingConfirmAction=()=>{
+    savedBlogs=[];hiddenServerFiles=[...new Set([...hiddenServerFiles,...serverFiles])];
+    try{localStorage.removeItem('ExampleBrand_blogs')}catch(e){}
+    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Library cleared');
+  };
+  document.getElementById('confirm-modal').classList.add('open');
+}
+function closeConfirmModal(confirmed){
+  document.getElementById('confirm-modal').classList.remove('open');
+  if(confirmed&&pendingConfirmAction)pendingConfirmAction();
+  pendingConfirmAction=null;
+}
 
-      setTimeout(() => {
-        toast.remove();
-      }, 3500);
-    }
-  </script>
+/* ─── TOASTS ─── */
+function showToast(message,type='success'){
+  const container=document.getElementById('toast-container');
+  const toast=document.createElement('div');
+  toast.className='toast '+type;
+  toast.setAttribute('role','status');
+  toast.innerHTML=`<span class="toast-dot"></span><span>${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(()=>{
+    toast.classList.add('out');
+    toast.addEventListener('animationend',()=>toast.remove(),{once:true});
+  },2000);
+}
+
+/* shake helper */
+document.getElementById('generate-error').addEventListener('animationend',function(){this.classList.remove('shake')});
+</script>
+
+<!-- shake keyframes -->
+<style>
+.shake{animation:shake 300ms cubic-bezier(.2,.7,.2,1)!important}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+/* legacy compat hidden els */
+#metric-words,#metric-density,#metric-diagrams,#metric-photos,#metric-health-bar{display:none}
+</style>
+
 </body>
 </html>
