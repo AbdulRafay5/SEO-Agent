@@ -33,6 +33,37 @@ CURRENT_DATE = date.today().strftime("%B %-d, %Y") if os.name != "nt" else date.
 os.makedirs(BLOGS_FOLDER, exist_ok=True)
 
 DRAFTS_REPO_DIR = "drafts"  # folder inside the GitHub datastore repo
+# Small JSON index of {filename, keyword, wordCount, createdAt, preview} for
+# every draft saved to GitHub, so the Saved Articles screen can show real
+# titles/previews on ANY browser/device - not just the one that generated
+# the article (which is all localStorage alone can ever give you).
+MANIFEST_PATH = f"{DRAFTS_REPO_DIR}/manifest.json"
+
+
+def _load_manifest():
+    content, _ = github_store.get_file(MANIFEST_PATH)
+    if not content:
+        return []
+    try:
+        data = json.loads(content)
+        return data if isinstance(data, list) else []
+    except ValueError:
+        return []
+
+
+def _upsert_manifest_entry(entry):
+    """Best-effort: add/replace this filename's entry, newest first."""
+    try:
+        manifest = _load_manifest()
+        manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
+        manifest.insert(0, entry)
+        github_store.save_file(
+            MANIFEST_PATH,
+            json.dumps(manifest, indent=2),
+            message=f"Update manifest: {entry.get('keyword', entry['filename'])}",
+        )
+    except Exception:
+        app.logger.exception("Failed to update GitHub manifest for %s", entry.get("filename"))
 
 # Key resolution order: GitHub settings.json (editable without a redeploy,
 # and doesn't depend on Vercel's env vars actually being picked up) -> real
@@ -770,7 +801,13 @@ def home():
     local_files = set(os.listdir(BUNDLED_BLOGS_FOLDER) + os.listdir(BLOGS_FOLDER))
     repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
     files = sorted(local_files | repo_files)
-    return render_template("index.html", files=files, keywords=all_keywords)
+
+    # Real title/preview/word-count for GitHub-saved drafts, keyed by
+    # filename, so a fresh browser/device isn't stuck with a filename-only
+    # placeholder the way it would be from serverFiles alone.
+    file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
+
+    return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
 
 
 @app.route("/blog/<filename>")
@@ -1223,6 +1260,13 @@ def api_generate(keyword):
                 body,
                 message=f"Generate draft: {keyword}",
             )
+            _upsert_manifest_entry({
+                "filename": f"{safe_filename}.md",
+                "keyword": keyword,
+                "wordCount": word_count,
+                "createdAt": time.strftime("%b %d, %Y \u00b7 %H:%M UTC", time.gmtime()),
+                "preview": (body[:180] + "\u2026") if len(body) > 180 else body,
+            })
         except Exception:
             app.logger.exception("Failed to save draft to GitHub datastore repo")
 
