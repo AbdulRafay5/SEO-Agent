@@ -538,6 +538,7 @@ select.field-input{padding-left:12px;cursor:pointer}
 ───────────────────────────────────── -->
 <script id="server-files-data" type="application/json">{% if files %}{{ files | tojson }}{% else %}[]{% endif %}</script>
 <script id="server-keywords-data" type="application/json">{% if keywords %}{{ keywords | tojson }}{% else %}[]{% endif %}</script>
+<script id="server-files-meta-data" type="application/json">{% if file_meta %}{{ file_meta | tojson }}{% else %}{}{% endif %}</script>
 
 <!-- ─────────────────────────────────────
      MOBILE TOP BAR + DRAWER
@@ -1020,6 +1021,7 @@ const industryLinks={
 /* ─── state ─── */
 let allKeywords=[];
 let serverFiles=[];
+let serverFileMeta={};
 let savedBlogs=[];
 let hiddenServerFiles=[];
 let currentTheme='light';
@@ -1057,6 +1059,10 @@ function loadBackendPayloads(){
     const el=document.getElementById('server-files-data');
     if(el&&el.textContent.trim())serverFiles=JSON.parse(el.textContent);
   }catch(e){serverFiles=[];}
+  try{
+    const el=document.getElementById('server-files-meta-data');
+    if(el&&el.textContent.trim())serverFileMeta=JSON.parse(el.textContent);
+  }catch(e){serverFileMeta={};}
   try{
     const el=document.getElementById('server-keywords-data');
     if(el&&el.textContent.trim())allKeywords=JSON.parse(el.textContent);
@@ -1782,7 +1788,15 @@ function renderRepositoryCards(){
   const all=[...savedBlogs];
   serverFiles.forEach(f=>{
     if(!hiddenServerFiles.includes(f)&&!all.some(b=>b.filename===f)){
-      all.push({id:f,keyword:f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,createdAt:'On server',wordCount:'2000+',preview:'Saved in generated_blogs/ directory.'});
+      // Use the real title/word-count/preview from the GitHub manifest when
+      // we have it (any browser/device), falling back to a filename-derived
+      // placeholder only when this file predates the manifest.
+      const meta=serverFileMeta[f];
+      all.push(meta?{
+        id:f,keyword:meta.keyword||f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,
+        createdAt:meta.createdAt||'On server',wordCount:meta.wordCount||'2000+',
+        preview:meta.preview||'Saved in generated_blogs/ directory.'
+      }:{id:f,keyword:f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,createdAt:'On server',wordCount:'2000+',preview:'Saved in generated_blogs/ directory.'});
     }
   });
   if(!all.length){
