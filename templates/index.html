@@ -760,7 +760,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             </li>
           </ul>
           <div class="article-tab-actions">
-            <button onclick="copyCurrentContent()" id="btn-copy" class="icon-btn disabled" aria-label="Copy markdown" title="Copy markdown">
+            <button onclick="copyCurrentContent()" id="btn-copy" class="icon-btn disabled" aria-label="Copy formatted" title="Copy as formatted content (ready to paste)">
               <i data-lucide="copy" style="width:15px;height:15px" aria-hidden="true"></i>
               <span style="font-size:13px">Copy</span>
             </button>
@@ -1583,10 +1583,48 @@ function syncRawEdits(){rawBlogContent=document.getElementById('markdown-raw-vie
 
 function copyCurrentContent(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}
-  const ta=document.createElement('textarea');
-  ta.value=rawBlogContent;ta.style.cssText='position:fixed;opacity:0';
-  document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
-  showToast('Copied to clipboard');
+  // Render the markdown to real HTML so pasting into WordPress, Google Docs,
+  // Gmail, Word etc. keeps headings/bold/links/images instead of dumping
+  // literal '#'/'**'/'![]()' markdown syntax as plain text.
+  const html=marked.parse(rawBlogContent);
+
+  if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+    const htmlBlob=new Blob([html],{type:'text/html'});
+    const textBlob=new Blob([rawBlogContent],{type:'text/plain'});
+    navigator.clipboard.write([new ClipboardItem({'text/html':htmlBlob,'text/plain':textBlob})])
+      .then(()=>showToast('Copied — ready to paste as formatted content'))
+      .catch(()=>copyRichContentFallback(html));
+    return;
+  }
+  copyRichContentFallback(html);
+}
+
+function copyRichContentFallback(html){
+  // Safari/older-browser path: render the HTML into an offscreen editable
+  // element and let execCommand('copy') pick up the rendered formatting
+  // (this preserves rich formatting far more reliably than copying a
+  // plain-text string ever could).
+  const container=document.createElement('div');
+  container.innerHTML=html;
+  container.setAttribute('contenteditable','true');
+  container.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+  document.body.appendChild(container);
+
+  const range=document.createRange();
+  range.selectNodeContents(container);
+  const selection=window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  try{
+    document.execCommand('copy');
+    showToast('Copied — ready to paste as formatted content');
+  }catch(err){
+    showToast('Copy failed','warning');
+  }
+
+  selection.removeAllRanges();
+  document.body.removeChild(container);
 }
 
 function downloadCurrentBlog(){
