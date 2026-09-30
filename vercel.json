@@ -1,7 +1,7 @@
 {
   "functions": {
     "app.py": {
-      "includeFiles": "{templates/**,generated_blogs/**,keywords.py}"
+      "includeFiles": "{templates/**,generated_blogs/**,keywords.py,github_store.py}"
     }
   }
 }
