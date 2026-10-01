@@ -33,11 +33,7 @@ CURRENT_DATE = date.today().strftime("%B %-d, %Y") if os.name != "nt" else date.
 
 os.makedirs(BLOGS_FOLDER, exist_ok=True)
 
-DRAFTS_REPO_DIR = "drafts"  # folder inside the GitHub datastore repo
-# Small JSON index of {filename, keyword, wordCount, createdAt, preview} for
-# every draft saved to GitHub, so the Saved Articles screen can show real
-# titles/previews on ANY browser/device - not just the one that generated
-# the article (which is all localStorage alone can ever give you).
+DRAFTS_REPO_DIR = "drafts"
 MANIFEST_PATH = f"{DRAFTS_REPO_DIR}/manifest.json"
 
 
@@ -53,7 +49,6 @@ def _load_manifest():
 
 
 def _upsert_manifest_entry(entry):
-    """Best-effort: add/replace this filename's entry, newest first."""
     try:
         manifest = _load_manifest()
         manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
@@ -66,12 +61,7 @@ def _upsert_manifest_entry(entry):
     except Exception:
         app.logger.exception("Failed to update GitHub manifest for %s", entry.get("filename"))
 
-# Key resolution order: GitHub settings.json (editable without a redeploy,
-# and doesn't depend on Vercel's env vars actually being picked up) -> real
-# env var -> local .env file. This fixes the "Vercel isn't picking up
-# GROQ_API_KEY/PEXELS_API_KEY" issue: as long as GITHUB_REPO/GITHUB_TOKEN 
-# are set, the actual API keys can live in the repo's settings.json instead
-# and are re-read on every cold start.
+
 _repo_settings = github_store.load_settings()
 gemini_key = os.getenv("GEMINI_API_KEY") or dotenv_settings.get("GEMINI_API_KEY")
 groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
@@ -83,6 +73,7 @@ qwen_client = Groq(api_key=qwen_key) if qwen_key else None
 GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "openai/gpt-oss-120b"
 QWEN_TITLE_MODEL = "qwen/qwen3.8-27b"
+
 POWER_WORDS = [
     "Best",
     "Top",
@@ -108,7 +99,6 @@ POWER_WORDS = [
 
 
 def generate_ai_text(prompt, max_tokens):
-    """Generate with Gemini first and use Groq only when Gemini is unavailable."""
     if gemini_client:
         try:
             response = gemini_client.models.generate_content(
@@ -166,10 +156,6 @@ def get_mermaid_diagram(diagram_code):
 
 
 def extract_bracket_blocks(text, start_marker):
-    """
-    Finds every `[MARKER: ...]` block in text, correctly handling nested
-    square brackets inside (needed for Mermaid diagram syntax like A[Label]).
-    """
     blocks = []
     search_start = 0
 
@@ -181,9 +167,9 @@ def extract_bracket_blocks(text, start_marker):
         depth = 0
         end_idx = None
         for i in range(start_idx, len(text)):
-            if text[i] == '[':
+            if text[i] == "[":
                 depth += 1
-            elif text[i] == ']':
+            elif text[i] == "]":
                 depth -= 1
                 if depth == 0:
                     end_idx = i
@@ -192,8 +178,8 @@ def extract_bracket_blocks(text, start_marker):
         if end_idx is None:
             break
 
-        full_match = text[start_idx:end_idx + 1]
-        inner_content = text[start_idx + len(start_marker):end_idx].strip()
+        full_match = text[start_idx : end_idx + 1]
+        inner_content = text[start_idx + len(start_marker) : end_idx].strip()
         blocks.append((full_match, inner_content))
         search_start = end_idx + 1
 
@@ -237,13 +223,11 @@ def count_markdown_links(text):
 
 
 def create_blog_slug(title_or_keyword):
-    """Create a stable, filesystem-safe slug from the article title or keyword."""
     slug = re.sub(r"[^a-z0-9]+", "_", (title_or_keyword or "blog").lower()).strip("_")
     return slug or "blog"
 
 
 def create_unique_blog_filename(keyword, title=None):
-    """Return a unique markdown filename based on the article heading."""
     base_title = (title or keyword or "blog").strip()
     base = create_blog_slug(base_title)
     suffix = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
@@ -335,7 +319,7 @@ def fix_keyword_typos(text, keyword):
     i = 0
 
     while i <= len(word_spans) - keyword_word_count:
-        window = word_spans[i:i + keyword_word_count]
+        window = word_spans[i : i + keyword_word_count]
         window_text = " ".join(w[0] for w in window)
         window_clean = re.sub(r"[^\w\s]", "", window_text).lower()
 
@@ -354,7 +338,6 @@ def fix_keyword_typos(text, keyword):
 
 
 def collapse_duplicate_words(text):
-    """Safety net: fixes accidental word-stuffing like 'Lahore Lahore' or 'the the'."""
     return re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", text, flags=re.IGNORECASE)
 
 
@@ -405,28 +388,6 @@ def enforce_keyword_density(body, keyword, target_per_1000=8.0):
         f"A practical review of {keyword} should include permissions, staff training, backups, and the support available after launch.",
         f"For growing retailers, {keyword} needs to remain dependable as product ranges, order volumes, and fulfilment locations increase.",
         f"The right {keyword} can make routine reconciliation easier by giving managers one consistent view of sales and stock activity.",
-        f"Any decision about {keyword} should account for the work involved in importing products, matching SKUs, and validating the first transactions.",
-        f"Teams get better results from {keyword} when they define ownership for catalogue changes, stock corrections, and exception handling.",
-        f"A useful implementation plan for {keyword} starts with a small set of products and transactions that staff can verify end to end.",
-        f"The day-to-day test for {keyword} is simple: a change made in one channel should reach the right records without avoidable manual copying.",
-        f"When a business adopts {keyword}, clear rules for cancellations, refunds, and out-of-stock items prevent small exceptions from becoming data problems.",
-        f"Managers assessing {keyword} should review not only features but also transaction history, export options, and the clarity of its reports.",
-        f"A well-planned rollout of {keyword} gives staff time to practise common sales and correction workflows before the system handles full volume.",
-        f"The practical benefit of {keyword} is strongest when it supports the existing team instead of forcing every process into an unfamiliar routine.",
-        f"For finance and operations teams, {keyword} is easier to trust when adjustments leave a clear record of what changed and why.",
-        f"The first review of {keyword} should focus on the routines staff perform every day, not only on features used once a month.",
-        f"A sensible comparison of {keyword} includes the quality of its product search, barcode handling, order status updates, and exports.",
-        f"Businesses get more value from {keyword} when the setup reflects their actual branches, sales channels, tax process, and fulfilment responsibilities.",
-        f"The transition to {keyword} should include checks for duplicate products, inconsistent prices, and missing stock before live orders are enabled.",
-        f"Good documentation makes {keyword} easier to maintain because staff know how to handle exceptions without creating a second unofficial process.",
-        f"An effective {keyword} workflow connects customer service, inventory control, sales reporting, and invoice review instead of isolating each task.",
-        f"The right controls around {keyword} help owners see which changes are routine, which need approval, and which require investigation.",
-        f"A clear owner for each {keyword} workflow makes it easier to resolve mismatches before they affect customers or financial reports.",
-        f"The onboarding effort for {keyword} is worthwhile when the team can explain what happens to a product, order, and payment at each step.",
-        f"A dependable {keyword} setup should make everyday decisions faster while still leaving managers enough detail to investigate unusual activity.",
-        f"Testing {keyword} with real product names, realistic quantities, and normal return cases reveals gaps that a simple demonstration may hide.",
-        f"The best way to judge {keyword} is to compare the time and error rate of the old process with the same workflow after implementation.",
-        f"Businesses should revisit their {keyword} process as they add channels or locations so small configuration gaps do not become recurring manual work.",
     ]
 
     paragraphs = body.split("\n\n")
@@ -464,8 +425,6 @@ def enforce_keyword_density(body, keyword, target_per_1000=8.0):
     if not prose_candidates:
         return body
 
-    # Let topic relevance choose the section; randomize ties so separate blogs
-    # do not receive the same placement order.
     random.shuffle(prose_candidates)
     prose_candidates.sort(key=lambda item: item[1], reverse=True)
     sentence_order = random.sample(reference_sentences, len(reference_sentences))
@@ -557,20 +516,23 @@ def title_contains_phrase(title, phrase):
     return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
 
 
-def limit_words(text, max_words):
+def limit_words(text, max_words=10):
     words = re.findall(r"\S+", (text or "").strip())
-    return " ".join(words[:max_words])
+    if len(words) <= max_words:
+        return text.strip()
+    return " ".join(words[:max_words]).rstrip(" |.-,:")
 
 
 def ensure_title_has_keywords(title, primary_keywords):
     fixed = re.sub(r"\s+", " ", (title or "").strip())
     if not fixed:
-        fixed = "Practical Guide"
+        fixed = primary_keywords[0]
     missing = [kw for kw in primary_keywords if kw and not title_contains_phrase(fixed, kw)]
-    if not missing:
-        return fixed
-    suffix = " and ".join(missing)
-    return re.sub(r"\s+", " ", f"{fixed}: {suffix}").strip()
+    if missing:
+        suffix = " | ".join(missing)
+        fixed = f"{fixed} | {suffix}"
+    # Strictly limit title length to max 10 words
+    return limit_words(fixed, max_words=10)
 
 
 def title_has_power_word(title):
@@ -582,13 +544,11 @@ def remove_power_words(text):
     cleaned = text
     for word in POWER_WORDS:
         cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:,")
-    return cleaned
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" |:-.,")
+    return limit_words(cleaned, max_words=10)
 
 
 def find_phrase_start(text, phrase):
-    """Case-insensitive search for `phrase` inside `text`, tolerating extra
-    whitespace between words, returning the raw character index or None."""
     phrase = (phrase or "").strip()
     if not phrase:
         return None
@@ -598,26 +558,25 @@ def find_phrase_start(text, phrase):
 
 
 def add_power_word(title, primary_keywords, word):
-    """Insert `word` as a natural lead adjective directly before the keyword
-    phrase it sits next to (e.g. "Smart Grocery Store POS Software"),
-    instead of bolting it onto the unrelated front of the whole headline."""
     for kw in primary_keywords:
         idx = find_phrase_start(title, kw)
         if idx is not None:
             before = title[:idx].rstrip()
             after = title[idx:]
             glue = f"{before} " if before else ""
-            return re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
-    return re.sub(r"\s+", " ", f"{word} {title}").strip()
+            res = re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
+            return limit_words(res, max_words=10)
+    res = re.sub(r"\s+", " ", f"{word} {title}").strip()
+    return limit_words(res, max_words=10)
 
 
 def normalize_meta_description(meta, primary_keywords):
     cleaned = re.sub(r"\s+", " ", (meta or "").strip())
     if not cleaned:
-        cleaned = f"Simple guide for {primary_keywords[0]} in Pakistan"
-    cleaned = limit_words(cleaned, 10)
-    if not cleaned:
-        cleaned = limit_words(f"Guide for {primary_keywords[0]}", 10)
+        cleaned = f"Learn all about {primary_keywords[0]} in Pakistan. Features, pricing, and practical guide for business owners."
+    # Standard SEO meta description length check (under 160 characters)
+    if len(cleaned) > 160:
+        cleaned = cleaned[:157].rsplit(" ", 1)[0] + "..."
     return cleaned
 
 
@@ -628,6 +587,7 @@ def enforce_title_rules(options, primary_keywords, include_power_words):
         meta_description = normalize_meta_description(option.get("meta_description", ""), primary_keywords)
         normalized.append({"title": title, "meta_description": meta_description})
 
+    # When enabled, exactly 3 out of 6 options carry power words (50%)
     target_power_count = 3 if include_power_words else 0
     power_indices = [idx for idx, item in enumerate(normalized) if title_has_power_word(item["title"])]
 
@@ -659,104 +619,79 @@ def enforce_title_rules(options, primary_keywords, include_power_words):
 def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
     keyword_list = "\n".join(f"- {kw}" for kw in primary_keywords)
     power_word_catalog = "Best, Top, Easy, Simple, Proven, Smart, Quick, Complete, Fast, Modern, Powerful, Ultimate, Essential, Efficient, Affordable, Reliable, Advanced, Effortless, Instant, Seamless"
-    power_word_line = (
-        f'Exactly 3 of the 6 titles must each include exactly ONE natural power word from this list, placed directly before the keyword phrase as a single adjective (e.g. "Smart {primary_keywords[0]}"): {power_word_catalog}. The other 3 titles must contain NONE of these words and no other hype adjective.'
+
+    power_rule = (
+        f"""POWER WORD REQUIREMENT (EXACTLY 3 OF THE 6 TITLES):
+- Exactly THREE of the six titles must contain ONE simple power word from: {power_word_catalog}.
+- The other THREE titles MUST NOT contain any of those power words."""
         if include_power_words
-        else f"Do not use any power or hype words in any title (avoid all of: {power_word_catalog})."
+        else f"""Do not use any hype or power words in any of the six titles (avoid: {power_word_catalog})."""
     )
 
-    return f"""You are a Lead SEO Content Strategist and Senior Copywriter specializing in Pakistani commerce, B2B software, tax compliance, and retail ecosystems.
+    return f"""You are a Lead SEO Copywriter for ExampleBrand in Pakistan[cite: 1, 51].
 
-You write headlines for ExampleBrand (a Pakistani POS, ERP, invoicing, inventory, and tax compliance platform).
-
-USER SEARCH QUERY:
+PRIMARY SEARCH QUERY:
 "{chosen_keyword}"
 
-CURRENT CONTEXT:
-Reference year is 2026. Current date: {CURRENT_DATE}.
+CURRENT YEAR: 2026.
 
-==================================================
-PHASE 1: KNOWLEDGE & CONTEXT EXPANSION (CRUCIAL)
-==================================================
-Before generating headlines, internally decode the query's business, legal, and operational reality:
-
-1. PAKISTANI REGULATORY & TAX ENTITIES:
-   - "SRB" = Sindh Revenue Board (Sales tax on services, POS integration rules, restaurants, hotels, beauty parlors, IT services, provincial compliance in Sindh/Karachi).
-   - "PRA" = Punjab Revenue Authority (Sales tax on services in Punjab/Lahore/Rawalpindi/Multan).
-   - "BRA" = Balochistan Revenue Authority.
-   - "KPRA" = Khyber Pakhtunkhwa Revenue Authority.
-   - "FBR" = Federal Board of Revenue (Tier-1 retail POS integration, STRN, income tax, sales tax on goods across Pakistan).
-   Recognize these abbreviations immediately and grasp the practical compliance, audit, invoicing, and penalty risks business owners face regarding them.
-
-2. INDUSTRY & OPERATIONAL CONTEXT:
-   - "Pharmacy / Medical Store" = Batch numbers, expiry tracking, formula search, distributor credit, fast OTC billing.
-   - "Restaurant / Cafe" = KOT (Kitchen Order Tickets), table turnaround, recipe/ingredient costing, recipe waste, SRB/PRA integration.
-   - "Supermarket / Grocery" = Barcode speed, high-volume checkout, bulk distributor purchase orders, dead inventory.
-   - "Wholesaler / Distributor" = Ledger/Khata, bulk discounts, credit recovery, multi-warehouse stock.
-
-==================================================
-PHASE 2: COPYWRITING & HEADLINE STRATEGY
-==================================================
-Generate exactly 6 distinct, eye-catching, high-CTR blog headlines.
-
-Write in very simple English that people in Pakistan can understand quickly.
-
-PRIMARY KEYWORDS THAT MUST APPEAR IN EVERY TITLE:
+MANDATORY PRIMARY KEYWORDS (ALL MUST BE NATURALLY PRESENT IN EVERY TITLE):
 {keyword_list}
 
-DO NOT use identical sentence structures across your options. Use 6 completely different editorial angles:
-
-1. The Compliance / Risk / Legal Angle:
-   Focus on regulations, audit readiness, penalties, registration steps, or staying compliant (especially critical for SRB, PRA, FBR, tax queries).
-2. The Bottom-Line / Financial Angle:
-   Focus on margins, profit leaks, tax deductions, cash flow, preventing theft, or cost calculations.
-3. The Buyer’s Checklist / Evaluation Angle:
-   Focus on what to verify, ask, or inspect before buying software or choosing a system.
-4. The Operational / Pain-Point Angle:
-   Tackle daily operational friction (e.g., checkout bottlenecks, manual khata errors, stockout headaches, billing disputes).
-5. The Modernization / Strategic Growth Angle:
-   Moving away from obsolete paper/Excel methods, automating workflows, or scaling branches.
-6. The Pragmatic Software / Solution Angle:
-   A clean, practical showcase of how modern software (naturally weaving in ExampleBrand where relevant) solves this exact search need.
-
 ==================================================
-STRICT EDITORIAL RULES
+CRITICAL TITLE STYLE & LENGTH RULES:
 ==================================================
-- Preserve the exact intent: If the query is about "SRB", the articles must genuinely discuss Sindh Revenue Board issues (tax rates, POS integration, filing, software requirements, service tax rules).
-- Retain specific locations: If Karachi, Rawalpindi, Lahore, or Sindh is in the search query, keep it. Do not invent cities if none are specified.
-- Use all the primary keywords listed above in every title.
-- Avoid clickbait fluff: No empty buzzwords ("Skyrocket your revenue", "Revolutionize your world"). Make the value proposition clear and grounded in Pakistani business realities.
-- Target Length: 7 to 14 words per title.
-- {power_word_line}
-- Never repeat the keyword phrase twice in the same title, and never append it again after a colon at the end.
-- After each title, provide one meta description in simple English with a maximum of 10 words.
+1. MAXIMUM 10 WORDS PER TITLE: Each title MUST be short, clean, and under 10 words[cite: 51].
+2. SIMPLICITY: Use plain, simple English that shopkeepers, retail owners, and business managers in Pakistan can instantly understand[cite: 51].
+3. STYLE EXAMPLES: Write short, direct titles separated by '|', '.', or clean dashes.
+   Example formats:
+   - "FBR Digital Invoicing System | Upload, Validate & Report"
+   - "Free POS Software. Point of Sale System. Loyverse POS"
+   - "Best POS System in Pakistan 2026 | Top 7 Compared"
+   - "Pharmacy Software in Lahore | Easy Billing & Inventory"
+4. {power_rule}
+5. ALL primary keywords provided above must appear naturally in every title[cite: 51].
+6. META DESCRIPTION: After each title, write a helpful, standard SEO meta description (120 to 155 characters) in very simple English explaining the benefit to Pakistani businesses[cite: 51].
 
 ==================================================
 OUTPUT FORMAT
 ==================================================
-Output ONLY the 6 title options as a numbered list.
-Each line format must be:
-1. <Title> || <Meta description max 10 words>
-
-Do not include markdown bolding, intro chatter, quotation marks, or labels like "Option #" or "H1".
-
-1. Title || Meta description
-2. Title || Meta description
-3. Title || Meta description
-4. Title || Meta description
-5. Title || Meta description
-6. Title || Meta description"""
+Output exactly 6 lines. No extra markdown, no introductory fluff[cite: 51]:
+1. Title (max 10 words) || Meta description
+2. Title (max 10 words) || Meta description
+3. Title (max 10 words) || Meta description
+4. Title (max 10 words) || Meta description
+5. Title (max 10 words) || Meta description
+6. Title (max 10 words) || Meta description"""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
-    joined = " and ".join(primary_keywords)
+    joined = " | ".join(primary_keywords)
     options = [
-        {"title": f"Complete guide to {joined} for Pakistan businesses", "meta_description": f"Simple guide for {primary_keywords[0]} in Pakistan"},
-        {"title": f"Easy steps to use {joined} in daily business", "meta_description": f"Learn practical steps for {primary_keywords[0]}"},
-        {"title": f"Best way to start {joined} without confusion", "meta_description": f"Start {primary_keywords[0]} the easy way"},
-        {"title": f"Common mistakes in {joined} and how to avoid", "meta_description": f"Avoid mistakes while using {primary_keywords[0]}"},
-        {"title": f"Simple checklist before choosing {joined} software", "meta_description": f"Checklist for better {primary_keywords[0]} decisions"},
-        {"title": f"How ExampleBrand helps with {joined} in 2026", "meta_description": f"ExampleBrand support for {primary_keywords[0]} workflows"},
+        {
+            "title": f"{joined} | Simple Business Guide 2026",
+            "meta_description": f"Learn everything about {primary_keywords[0]} in Pakistan. Simple guide to setup, billing, and key features for your store."
+        },
+        {
+            "title": f"Easy {joined} | Fast Invoicing & Inventory",
+            "meta_description": f"Step by step guide to using {primary_keywords[0]}. Save time on calculations and manage your stock without confusion."
+        },
+        {
+            "title": f"{joined}. Point of Sale System Software",
+            "meta_description": f"Compare top solutions for {primary_keywords[0]} in Pakistan. See how cloud and offline systems help daily retail counters."
+        },
+        {
+            "title": f"Best {joined} in Pakistan | Full Review",
+            "meta_description": f"Discover the top features and pricing for {primary_keywords[0]}. Prevent daily errors and manage your accounts effortlessly."
+        },
+        {
+            "title": f"{joined} | Common Mistakes and Easy Solutions",
+            "meta_description": f"Avoid common billing and tax errors with {primary_keywords[0]}. Practical advice designed for retail and wholesale business owners."
+        },
+        {
+            "title": f"ExampleBrand {joined} | Fast Daily Management",
+            "meta_description": f"See how ExampleBrand powers {primary_keywords[0]} with real-time stock alerts, digital invoicing, and local reporting."
+        },
     ]
     return enforce_title_rules(options, primary_keywords, include_power_words)
 
@@ -766,9 +701,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
 
     for line in raw_text.splitlines():
         line = line.strip()
-        if not line:
-            continue
-        if not re.match(r"^\s*\d+\s*[.)]\s+", line):
+        if not line or not re.match(r"^\s*\d+\s*[.)]\s+", line):
             continue
 
         cleaned = re.sub(r"^\s*\d+\s*[.)]\s*", "", line).strip().strip('"\'`*#')
@@ -783,11 +716,12 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
             meta_description = re.sub(r"^(meta|description)\s*[:\-]\s*", "", right.strip(), flags=re.IGNORECASE)
         elif " - " in cleaned:
             left, right = cleaned.rsplit(" - ", 1)
-            if len(right.split()) <= 10:
-                title = left.strip()
-                meta_description = right.strip()
+            title = left.strip()
+            meta_description = right.strip()
 
-        if len(title.split()) < 4 or not re.search(r"[A-Za-z]", title):
+        title = limit_words(title, max_words=10)
+
+        if len(title.split()) < 3 or not re.search(r"[A-Za-z]", title):
             continue
 
         if title.lower() in {item["title"].lower() for item in options}:
@@ -802,8 +736,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
         if option["title"].lower() not in {item["title"].lower() for item in options}:
             options.append(option)
 
-    options = enforce_title_rules(options[:6], primary_keywords, include_power_words)
-    return options
+    return enforce_title_rules(options[:6], primary_keywords, include_power_words)
 
 
 def extract_ai_title_candidates(raw_text):
@@ -818,19 +751,19 @@ def extract_ai_title_candidates(raw_text):
 
     for line in raw_text.splitlines():
         line = line.strip()
-        if not line:
-            continue
-
-        if any(re.search(pat, line, re.IGNORECASE) for pat in noise_patterns):
+        if not line or any(re.search(pat, line, re.IGNORECASE) for pat in noise_patterns):
             continue
 
         if not re.match(r"^\s*(?:\d+\s*[.)]|[-*])\s+", line):
             continue
 
-        cleaned = re.sub(r"^\s*(?:\d+\s*[.)]|[-*])\s*", "", line).strip()
-        cleaned = cleaned.strip('"\'`*#')
+        cleaned = re.sub(r"^\s*(?:\d+\s*[.)]|[-*])\s*", "", line).strip().strip('"\'`*#')
+        if "||" in cleaned:
+            cleaned = cleaned.split("||")[0].strip()
 
-        if len(cleaned.split()) < 4 or not re.search(r"[A-Za-z]", cleaned):
+        cleaned = limit_words(cleaned, max_words=10)
+
+        if len(cleaned.split()) < 3 or not re.search(r"[A-Za-z]", cleaned):
             continue
 
         if cleaned.lower() in {title.lower() for title in candidates}:
@@ -842,9 +775,6 @@ def extract_ai_title_candidates(raw_text):
 
 
 def _locate_title_end(text, title):
-    """Return the index right after `title` inside `text`, tolerating minor
-    wording differences from the model (punctuation, pluralization, etc.),
-    or None if it can't be confidently located."""
     if not title:
         return None
     lower_text = text.casefold()
@@ -861,16 +791,11 @@ def _locate_title_end(text, title):
 
     return None
 
+
 def _split_heading_from_intro(heading_text, title):
-    """Split a raw H1 line into (title, introduction) so a run-on line from
-    the model - where the intro got glued onto the title with no break -
-    never gets rendered as one giant heading."""
     split_at = _locate_title_end(heading_text, title)
 
     if split_at is None:
-        # Title text couldn't be matched closely enough - fall back to the
-        # first sentence boundary so at least something splits off as the
-        # title instead of leaving the whole line as one heading.
         sentence_end = re.search(r"[.!?](?:\s+|$)", heading_text)
         if sentence_end and sentence_end.start() < 160:
             split_at = sentence_end.end()
@@ -909,21 +834,21 @@ def ensure_h1_title(body, chosen_title=None):
 
 
 def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None):
-    internal_link = keyword_links.get(chosen_keyword, "https://example.com/pricing-plan/")
+    internal_link = keyword_links.get(chosen_keyword, "[https://example.com/pricing-plan/](https://example.com/pricing-plan/)")
     extra_links = get_extra_internal_link_pool(chosen_keyword)
     extra_links_text = "\n".join(f"- {url}" for url in extra_links) if extra_links else "(none available)"
 
     if chosen_title:
         title_instruction = f'Use this EXACT text as the H1 title (do not alter it): "{chosen_title}"'
     else:
-        title_instruction = f'H1 title that names "{chosen_keyword}" plus a short descriptive subtitle after a colon (e.g. "X: Complete Guide to Y, Z & Compliance") - avoid generic "Best/Ultimate X" phrasing here'
+        title_instruction = f'H1 title naming "{chosen_keyword}"'
 
     purpose_context = blog_purpose.strip() or "Create a practical, useful guide that satisfies the search intent behind the keyword."
     questions_context = audience_questions.strip() or "No extra reader questions were provided; infer the most useful questions from the keyword."
     tone_instructions = {
-        "professional": "Use a professional, authoritative, and direct tone. Do not use fictional stories, personal anecdotes, dramatic scenes, or informal filler. Open with a concise statement of the real problem or decision the reader faces.",
-        "conversational": "Use a conversational and approachable tone while staying accurate and useful. You may use relatable examples, but do not invent personal experiences, named people, or unsupported stories.",
-        "informal": "Use a relaxed, friendly tone with simple language and relatable examples. Keep the advice credible and focused; do not add fictional personal stories or exaggerated claims.",
+        "professional": "Use a professional, authoritative, and direct tone. Open with a concise statement of the real problem or decision the reader faces.",
+        "conversational": "Use a conversational and approachable tone while staying accurate and useful.",
+        "informal": "Use a relaxed, friendly tone with simple language and relatable examples.",
     }
     tone_context = tone_instructions.get(blog_tone, tone_instructions["professional"])
     secondary_keywords = secondary_keywords or []
@@ -937,17 +862,17 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
 
 SECONDARY KEYWORD RULES:
 {secondary_lines}
-Do not put secondary keywords in headings, metadata, image markers, diagram code, or unrelated sentences. Do not repeat them back-to-back or force awkward wording."""
+Do not put secondary keywords in headings, metadata, image markers, diagram code, or unrelated sentences."""
 
-    return f"""You are an expert SEO content writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform.
+    return f"""You are an expert SEO content writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform[cite: 1, 51].
 
 CURRENT DATE:
 {CURRENT_DATE}
 
 YEAR ACCURACY RULE:
-Use 2026 for current-year references. Do not describe current laws, tax updates, software trends, or business conditions as being from 2024 or 2025. Mention an older year only when clearly discussing historical background and label it as historical. Never invent a dated tax reform or notice.
+Use 2026 for current-year references[cite: 51].
 
-Write ONE complete, publish-ready blog article about "{chosen_keyword}". The article must feel original and specific to this keyword, not like a reusable template.
+Write ONE complete, publish-ready blog article about "{chosen_keyword}"[cite: 51].
 
 BLOG PURPOSE:
 {purpose_context}
@@ -957,70 +882,27 @@ WRITING TONE:
 
 READER QUESTIONS AND EDITORIAL DIRECTION:
 {questions_context}
-
-OPENING RULE:
-Do not open with a broad industry statistic. Follow the selected writing tone. For a professional tone, start directly with the real business problem, decision, or relevant context in clear factual language; do not turn it into a story or fictional scenario. For conversational or informal tones, a brief relatable example is acceptable, but it must not be presented as a real event or personal experience.
-
-TITLE QUALITY RULE:
-The H1 must be a practical, specific article title that tells the reader what decision, workflow, or problem the article covers. Do not use vague marketing slogans such as "From Ecommerce to Retail" or "Automate Your Business" without naming the POS, Shopify, WooCommerce, inventory, integration, or evaluation topic.
-
-TOPIC AND ORIGINALITY RULE:
-Every section must directly serve "{chosen_keyword}" and the stated blog purpose. Use concrete examples, decisions, workflows, and tradeoffs that fit this topic. Do not reuse a generic sequence of headings or repeat the same explanation in different words.
 {secondary_context}
 
-ANTI-HALLUCINATION RULE:
-Never invent specific statistics, prices, customer counts, named competitors, awards, or certifications. Where you reference a regulation, authority, or process, describe it in general, accurate terms (e.g. "SRB's official services include...") rather than fabricating exact figures. You may factually describe ExampleBrand's real features: POS billing, digital invoicing, inventory management, purchases, vendors, sales, customers, Udhaar/credit management, expenses, profit and loss, analytics, multi-branch management, multi-user access, attendance, payroll, barcode scanning, low-stock alerts, batch/expiry tracking, quotations, loyalty programs, CRM, e-commerce integrations, and APIs.
-
-EDITORIAL BRIEF:
-Treat the keyword, purpose, audience questions, tone, and selected title as the article brief, not as phrases to repeat. Before drafting, decide the reader's business situation, the decision they need to make, the operational problems involved, and the evidence or checks that would help them act. Build sections around that reasoning. For a Shopify and WooCommerce POS topic, cover channel synchronization, product and SKU mapping, inventory updates, order and return workflows, taxes and invoicing in Pakistan, reporting, implementation risks, support, and a practical evaluation checklist when relevant. Explain tradeoffs and give concrete examples. Every paragraph must add a fact, step, example, comparison, or decision rule.
-
-FOCUS-PHRASE PLACEMENT:
-If the exact focus phrase needs to appear more often, choose sections that are substantively about the product, workflow, evaluation, implementation, or business outcome. Add it inside a sentence that explains the section's point. Never place it in a heading, table label, list label, image marker, bold fragment, or a sentence that interrupts a list. Keep the phrase out of unrelated paragraphs and do not attach it to a heading or another fragment.
-
-FORMATTING AND LANGUAGE RULES:
-Every Markdown heading must be on its own line and contain only the heading text. Never begin a heading with a broken fragment such as "What is {chosen_keyword}" followed by a repeated phrase. Use natural grammar: for example, "What Is PRA Software Integration?" and "How Does It Fit Into an Existing Invoicing Workflow?". Do not put Markdown bold markers inside headings. Do not make the exact keyword appear in every heading.
-
-Never wrap the exact focus keyword in Markdown bold markers. Use the keyword as ordinary prose inside a complete grammatical sentence. Do not insert the keyword where a verb, article, or connector is missing; reread every sentence containing the focus keyword before returning the article.
-
-The article MUST be at least {MIN_WORD_COUNT} words in the body content (not counting meta title/description). Every section should add genuine detail - do not pad with repetition to reach the count.
+The article MUST be at least {MIN_WORD_COUNT} words in the body content[cite: 51].
 
 Format the first two lines exactly as:
-META_TITLE: <60 characters max, includes "{chosen_keyword}", includes a power word like Best/Top/Ultimate>
+META_TITLE: <60 characters max, includes "{chosen_keyword}">
 META_DESCRIPTION: <160 characters max, includes "{chosen_keyword}">
 
-Then a blank line, followed by a natural article structure. The first article line MUST be the H1 in Markdown format (`# Title`) on its own line, followed by a blank line and the introduction. Include the most useful topic-specific sections, practical implementation or evaluation guidance where relevant, exactly five useful FAQs, and a conclusion. Choose section names that fit the subject; do not force "What is..." sections or a fixed heading template. Use the selected H1 title when provided: {title_instruction}.
+Then a blank line, followed by:
+# Title
+Follow: {title_instruction}
 
-KEYWORD RULES:
-- Use the exact phrase "{chosen_keyword}" naturally 8-10 times per 1,000 words, mainly in the title, introduction, relevant sections, and conclusion. Reach this range by planning relevant references in useful paragraphs, never by repeating a sentence, adding filler, or forcing the phrase into unrelated sections.
-- Do not force the exact phrase into headings, every paragraph, FAQs, or unrelated sentences. Use clear grammatical variations and related terminology elsewhere.
-- Never place the keyword as a detached fragment, repeat it back-to-back, or use bold markers around it in a heading.
+Output only the finished article content - no commentary, no explanation[cite: 51]."""
 
-LINKING RULES:
-- Include the required internal link to {internal_link} with relevant anchor text, and the required link to {CONTACT_URL} with anchor text like "Book a free demo".
-- In addition, naturally weave in 1-3 more internal links from this list of other real ExampleBrand pages, wherever genuinely relevant to something you're discussing (do not force one in if nothing fits naturally):
-{extra_links_text}
-- Include as many external links as genuinely support a specific factual claim (at least 1, often 2-3 is better) - real, well-known official government/regulatory sites or Wikipedia. Never invent a URL that doesn't exist.
-
-MEDIA RULES:
-- Mark 5-7 regular photo spots with [IMAGE: description], each depicting something genuinely relevant to "{chosen_keyword}", placed every 2-3 paragraphs.
-- Mark 1-2 conceptual process visuals as a single-line Mermaid flowchart: [DIAGRAM: flowchart LR; A[Step One] --> B[Step Two] --> C[Step Three]] - 3-6 steps, short labels, letters/numbers/spaces only inside the brackets.
-
-Output only the finished article content described above - no commentary, no explanation, no repeated instructions."""
 
 @app.route("/")
 def home():
-    # Local disk (BLOGS_FOLDER) only survives within one serverless
-    # instance's lifetime, so it's unioned with whatever's saved in the
-    # GitHub datastore repo, which survives cold starts and redeploys.
     local_files = set(os.listdir(BUNDLED_BLOGS_FOLDER) + os.listdir(BLOGS_FOLDER))
     repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
     files = sorted(local_files | repo_files)
-
-    # Real title/preview/word-count for GitHub-saved drafts, keyed by
-    # filename, so a fresh browser/device isn't stuck with a filename-only
-    # placeholder the way it would be from serverFiles alone.
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
-
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
 
 
@@ -1041,8 +923,6 @@ def view_blog(filename):
         with open(bundled_filepath, "r", encoding="utf-8") as f:
             raw_text = f.read()
     else:
-        # Not on local disk (likely a fresh serverless instance) - fall
-        # back to the GitHub datastore repo before giving up.
         raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
         if raw_text is None:
             abort(404)
@@ -1080,8 +960,6 @@ def _format_interest_over_time(interest, keyword):
 
 
 def _format_region_data(region_df, keyword, limit=30):
-    """Interest-by-region, sorted high to low, matching the map view on the
-    real Google Trends site (minus the map graphic itself)."""
     if region_df is None or region_df.empty or keyword not in region_df.columns:
         return []
     series = region_df[keyword].fillna(0).astype(int)
@@ -1090,8 +968,6 @@ def _format_region_data(region_df, keyword, limit=30):
 
 
 def is_related_query(query, keyword):
-    """Loose relevance check so we drop Google's occasional unrelated
-    breakout suggestions that share no words at all with the searched term."""
     keyword_terms = set(re.findall(r"[a-z0-9]+", keyword.casefold()))
     query_terms = set(re.findall(r"[a-z0-9]+", str(query).casefold()))
     meaningful_terms = {term for term in keyword_terms if len(term) >= 2}
@@ -1119,8 +995,6 @@ def _format_related_queries(query_df, keyword, limit=10):
 
 
 def _query_google_trends(pytrends, keyword, timeframe, geo):
-    # geo="PK" scopes every view below to Pakistan only, so a country already
-    # scoped this way needs a REGION (province-level) breakdown, not COUNTRY.
     pytrends.geo = geo
     region_resolution = "REGION" if geo else "COUNTRY"
     try:
@@ -1166,16 +1040,11 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
     }
 
 
-# Cache Google Trends responses briefly so repeated searches (same keyword/timeframe)
-# don't re-hit Google, which is the main thing that triggers its rate limit.
 _TRENDS_CACHE = {}
 _TRENDS_CACHE_TTL_SECONDS = 600
 _TRENDS_NO_DATA_TTL_SECONDS = 300
 _TRENDS_RATE_LIMIT_TTL_SECONDS = 300
 
-# Rotate between a few realistic desktop browser User-Agents so repeated
-# requests don't all look like the exact same client hammering Google, which
-# is one of the things that trips its bot detection / rate limiting.
 _TRENDS_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -1206,8 +1075,6 @@ def fetch_trends_data(searched_keyword, timeframe):
     attempts = 3
     for attempt in range(attempts):
         if attempt:
-            # Growing, jittered backoff so retries don't land on Google in a
-            # predictable rhythm - a flat sleep(3) is easy to keep tripping.
             time.sleep((attempt * 3) + random.uniform(0.5, 2.0))
 
         trends_options = {
@@ -1227,12 +1094,7 @@ def fetch_trends_data(searched_keyword, timeframe):
         pytrends = TrendReq(**trends_options)
 
         try:
-            # Use the exact typed term (not an auto-resolved Topic) so results match
-            # what a user sees typing the same phrase into Google Trends and pressing Enter,
-            # scoped to Pakistan since this tool only serves Pakistani businesses.
-            trends_data = _query_google_trends(
-                pytrends, searched_keyword, timeframe, "PK"
-            )
+            trends_data = _query_google_trends(pytrends, searched_keyword, timeframe, "PK")
             interest_over_time = trends_data["interest_over_time"]
             region_data = trends_data["region_data"]
             chart_labels = interest_over_time["labels"]
@@ -1249,12 +1111,7 @@ def fetch_trends_data(searched_keyword, timeframe):
                 "top_queries": top_queries,
                 "rising_queries": rising_queries,
             }
-            has_data = bool(
-                chart_values
-                or region_data
-                or top_queries
-                or rising_queries
-            )
+            has_data = bool(chart_values or region_data or top_queries or rising_queries)
             _TRENDS_CACHE[cache_key] = {
                 "timestamp": time.time(),
                 "ttl": _TRENDS_CACHE_TTL_SECONDS if has_data else _TRENDS_NO_DATA_TTL_SECONDS,
@@ -1264,8 +1121,6 @@ def fetch_trends_data(searched_keyword, timeframe):
             return result
         except Exception as error:
             last_error = error
-            # A 429 won't clear up within the next couple of seconds; stop burning
-            # more requests against an already rate-limited session.
             if "429" in str(error):
                 break
 
@@ -1302,12 +1157,7 @@ def api_trends():
         top_queries = data["top_queries"]
         rising_queries = data["rising_queries"]
 
-        has_data = bool(
-            data["chart_values"]
-            or region_data
-            or top_queries
-            or rising_queries
-        )
+        has_data = bool(data["chart_values"] or region_data or top_queries or rising_queries)
         if not has_data:
             fallback = get_fallback_trend_data()
             fallback["searched_keyword"] = searched_keyword
@@ -1432,15 +1282,15 @@ def api_generate(keyword):
             feedback = []
             if preview_word_count < MIN_WORD_COUNT:
                 feedback.append(
-                    f"The previous attempt was only about {preview_word_count} words. Expand every section with useful examples, steps, tradeoffs, and decision criteria to reach at least {MIN_WORD_COUNT} words."
+                    f"The previous attempt was only about {preview_word_count} words. Expand every section to reach at least {MIN_WORD_COUNT} words."
                 )
             if preview_density < 8.0:
                 feedback.append(
-                    f"The previous draft used the exact focus phrase at {preview_density:.1f} per 1,000 words. Add relevant, topic-specific references to the phrase in sections where it is genuinely being discussed until the natural rate is 8-10 per 1,000 words. Do not add filler or repeat sentences."
+                    f"Add relevant references to {keyword} until natural rate is 8-10 per 1,000 words."
                 )
             elif preview_density > 10.0:
                 feedback.append(
-                    f"The previous draft used the exact focus phrase at {preview_density:.1f} per 1,000 words. Replace unnecessary repetitions with natural synonyms and topic-specific wording until the rate is 8-10 per 1,000 words. Do not remove useful detail."
+                    f"Replace unnecessary repetitions with natural synonyms until rate is 8-10 per 1,000 words."
                 )
             prompt += "\n\nRevise the complete article based on this quality feedback:\n- " + "\n- ".join(feedback)
 
@@ -1456,7 +1306,7 @@ def api_generate(keyword):
         body = fix_keyword_typos(body, keyword)
         body = collapse_duplicate_words(body)
         body = clean_keyword_artifacts(body, keyword)
-        internal_link = keyword_links.get(keyword, "https://example.com/pricing-plan/")
+        internal_link = keyword_links.get(keyword, "[https://example.com/pricing-plan/](https://example.com/pricing-plan/)")
         body = ensure_minimum_links(body, keyword, internal_link)
         body, photo_count, diagram_count = replace_image_markers(body)
         body = ensure_h1_title(body, chosen_title)
@@ -1474,10 +1324,6 @@ def api_generate(keyword):
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(body)
 
-        # Best-effort persistence to the GitHub datastore repo, so the blog
-        # survives past this serverless instance's lifetime. If GitHub
-        # isn't configured (local dev, or env vars not set yet) this is a
-        # silent no-op and the local-disk copy above still works as before.
         try:
             github_store.save_file(
                 f"{DRAFTS_REPO_DIR}/{safe_filename}",
