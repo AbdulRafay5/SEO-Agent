@@ -414,17 +414,6 @@ select.field-input{padding-left:12px;cursor:pointer}
 .data-table td{padding:10px 14px;color:var(--text);vertical-align:middle}
 
 /* ═══════════════════════════════
-   TRENDS CARDS
-═══════════════════════════════ */
-.trends-query-row{
-  display:flex;align-items:center;gap:8px;padding:8px 12px;
-  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
-  font-size:13px;
-}
-.trends-query-title{flex:1;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trends-query-val{font-family:var(--mono);font-size:11px;color:var(--muted);flex-shrink:0}
-
-/* ═══════════════════════════════
    REPO GRID
 ═══════════════════════════════ */
 .repo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
@@ -904,20 +893,10 @@ select.field-input{padding-left:12px;cursor:pointer}
           </div>
         </div>
 
-        <!-- Region + queries -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px" id="trends-lower-grid">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Interest by region</div>
-            <div id="trends-region-list" style="display:flex;flex-direction:column;gap:6px"></div>
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Top related queries</div>
-            <div id="trends-top-queries" style="display:flex;flex-direction:column;gap:6px"></div>
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Rising queries</div>
-            <div id="trends-rising-queries" style="display:flex;flex-direction:column;gap:6px"></div>
-          </div>
+        <!-- Region -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px" id="trends-lower-grid">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Interest by region</div>
+          <div id="trends-region-list" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
       </div>
     </div>
@@ -998,15 +977,6 @@ select.field-input{padding-left:12px;cursor:pointer}
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
 <!-- ─────────────────────────────────────
-     RESPONSIVE GRID HELPERS
-───────────────────────────────────── -->
-<style>
-@media(max-width:900px){
-  #trends-lower-grid{grid-template-columns:1fr!important}
-}
-</style>
-
-<!-- ─────────────────────────────────────
      JAVASCRIPT
 ───────────────────────────────────── -->
 <script>
@@ -1060,6 +1030,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   renderRepositoryCards();
   renderStudioQuickPicks();
   renderRecentDrafts();
+  document.getElementById('target-keyword')?.addEventListener('input',scheduleStudioTrendingUpdate);
 });
 
 function loadBackendPayloads(){
@@ -1218,6 +1189,14 @@ function openDraft(filename){
 }
 
 /* ─── quick keyword chips ─── */
+function appendSeeAllLink(wrap){
+  const a=document.createElement('a');
+  a.href='#';a.style.cssText='font-size:13px;color:var(--accent);font-weight:500';
+  a.textContent='See all';
+  a.onclick=(e)=>{e.preventDefault();switchTab('trends')};
+  wrap.appendChild(a);
+}
+
 function renderStudioQuickPicks(){
   const wrap=document.getElementById('studio-quick-trends');
   if(!wrap)return;
@@ -1235,12 +1214,64 @@ function renderStudioQuickPicks(){
     };
     wrap.appendChild(btn);
   });
-  // "See all" link
-  const a=document.createElement('a');
-  a.href='#';a.style.cssText='font-size:13px;color:var(--accent);font-weight:500';
-  a.textContent='See all';
-  a.onclick=(e)=>{e.preventDefault();switchTab('trends')};
-  wrap.appendChild(a);
+  appendSeeAllLink(wrap);
+}
+
+function renderStudioTrendingChips(terms){
+  const wrap=document.getElementById('studio-quick-trends');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  terms.forEach(term=>{
+    const btn=document.createElement('button');
+    btn.className='kw-chip';
+    btn.textContent=term;
+    btn.onclick=()=>{
+      wrap.querySelectorAll('.kw-chip').forEach(c=>c.classList.remove('selected'));
+      btn.classList.add('selected');
+      const kw=document.getElementById('target-keyword');
+      if(kw)kw.value=term;
+    };
+    wrap.appendChild(btn);
+  });
+  appendSeeAllLink(wrap);
+}
+
+/* Fetches Google Trends related queries for whatever the user has typed as
+   the primary keyword and swaps them into "Trending now". Fails silently
+   (no toast) - if nothing is found or the request errors, the chip list is
+   just left empty rather than showing a failure message. */
+let studioTrendingTimer=null;
+let studioTrendingRequestId=0;
+function scheduleStudioTrendingUpdate(){
+  clearTimeout(studioTrendingTimer);
+  studioTrendingTimer=setTimeout(updateStudioTrendingChips,600);
+}
+async function updateStudioTrendingChips(){
+  const kw=document.getElementById('target-keyword')?.value.trim()||'';
+  if(!kw){renderStudioQuickPicks();return;}
+
+  const requestId=++studioTrendingRequestId;
+  try{
+    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe=1m');
+    const data=await res.json();
+    if(requestId!==studioTrendingRequestId)return; // superseded by a newer keystroke
+
+    const combined=[...(data.top_queries||[]),...(data.rising_queries||[])];
+    const seen=new Set();
+    const terms=[];
+    combined.forEach(item=>{
+      const q=(item.query||'').trim();
+      if(q&&!seen.has(q.toLowerCase())){seen.add(q.toLowerCase());terms.push(q);}
+    });
+
+    const wrap=document.getElementById('studio-quick-trends');
+    if(!terms.length){if(wrap)wrap.innerHTML='';return;}
+    renderStudioTrendingChips(terms.slice(0,8));
+  }catch(err){
+    if(requestId!==studioTrendingRequestId)return;
+    const wrap=document.getElementById('studio-quick-trends');
+    if(wrap)wrap.innerHTML='';
+  }
 }
 
 function setKeyword(kw){
@@ -1735,8 +1766,6 @@ async function queryBackendTrends(){
       d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.region}">${r.region}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
       rl.appendChild(d);
     });
-    renderRelatedQueries('trends-top-queries',topQ,has,noMsg);
-    renderRelatedQueries('trends-rising-queries',risingQ,has,noMsg);
     lucide.createIcons();
   }catch(err){
     if(trendsChartInstance){trendsChartInstance.destroy();trendsChartInstance=null;}
@@ -1746,22 +1775,7 @@ async function queryBackendTrends(){
   }
 }
 
-function renderRelatedQueries(cid,queries,has,noMsg){
-  const el=document.getElementById(cid);
-  if(!queries.length){el.innerHTML=has?'<p style="font-size:13px;color:var(--muted);padding:6px 0">No related queries.</p>':noMsg;return;}
-  el.innerHTML='';
-  queries.forEach(q=>{
-    const row=document.createElement('div');
-    row.className='trends-query-row';
-    row.innerHTML=`<span class="trends-query-title" title="${q.query}">${q.query}</span><span class="trends-query-val">${q.value}</span>`;
-    const btn=document.createElement('button');
-    btn.className='btn btn-secondary btn-sm';btn.style.flexShrink='0';
-    btn.textContent='Use in Studio';
-    btn.onclick=()=>setKeyword(q.query);
-    row.appendChild(btn);
-    el.appendChild(row);
-  });
-}
+
 
 function renderTrendsChart(labels,values){
   const ctx=document.getElementById('trendsChart').getContext('2d');
