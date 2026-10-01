@@ -1,6 +1,7 @@
 from flask import Flask, abort, render_template, jsonify, request
 from dotenv import dotenv_values, load_dotenv
 from datetime import date
+from urllib.parse import unquote_plus
 import os
 import re
 import random
@@ -91,6 +92,18 @@ POWER_WORDS = [
     "Smart",
     "Quick",
     "Complete",
+    "Fast",
+    "Modern",
+    "Powerful",
+    "Ultimate",
+    "Essential",
+    "Efficient",
+    "Affordable",
+    "Reliable",
+    "Advanced",
+    "Effortless",
+    "Instant",
+    "Seamless",
 ]
 
 
@@ -569,13 +582,33 @@ def remove_power_words(text):
     cleaned = text
     for word in POWER_WORDS:
         cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", cleaned).strip(" -:,")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:,")
+    return cleaned
 
 
-def add_power_word(text):
-    if title_has_power_word(text):
-        return text
-    return f"Best {text}".strip()
+def find_phrase_start(text, phrase):
+    """Case-insensitive search for `phrase` inside `text`, tolerating extra
+    whitespace between words, returning the raw character index or None."""
+    phrase = (phrase or "").strip()
+    if not phrase:
+        return None
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in phrase.split()), re.IGNORECASE)
+    match = pattern.search(text)
+    return match.start() if match else None
+
+
+def add_power_word(title, primary_keywords, word):
+    """Insert `word` as a natural lead adjective directly before the keyword
+    phrase it sits next to (e.g. "Smart Grocery Store POS Software"),
+    instead of bolting it onto the unrelated front of the whole headline."""
+    for kw in primary_keywords:
+        idx = find_phrase_start(title, kw)
+        if idx is not None:
+            before = title[:idx].rstrip()
+            after = title[idx:]
+            glue = f"{before} " if before else ""
+            return re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
+    return re.sub(r"\s+", " ", f"{word} {title}").strip()
 
 
 def normalize_meta_description(meta, primary_keywords):
@@ -602,14 +635,19 @@ def enforce_title_rules(options, primary_keywords, include_power_words):
         for idx in power_indices[target_power_count:]:
             normalized[idx]["title"] = remove_power_words(normalized[idx]["title"])
 
+    power_indices = [idx for idx, item in enumerate(normalized) if title_has_power_word(item["title"])]
     if len(power_indices) < target_power_count:
         needed = target_power_count - len(power_indices)
+        word_cycle = list(POWER_WORDS)
+        random.shuffle(word_cycle)
         for idx, item in enumerate(normalized):
             if needed <= 0:
                 break
-            if not title_has_power_word(item["title"]):
-                item["title"] = add_power_word(item["title"])
-                needed -= 1
+            if idx in power_indices:
+                continue
+            word = word_cycle[needed % len(word_cycle)]
+            item["title"] = add_power_word(item["title"], primary_keywords, word)
+            needed -= 1
 
     for item in normalized:
         item["title"] = ensure_title_has_keywords(item["title"], primary_keywords)
@@ -620,10 +658,11 @@ def enforce_title_rules(options, primary_keywords, include_power_words):
 
 def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
     keyword_list = "\n".join(f"- {kw}" for kw in primary_keywords)
+    power_word_catalog = "Best, Top, Easy, Simple, Proven, Smart, Quick, Complete, Fast, Modern, Powerful, Ultimate, Essential, Efficient, Affordable, Reliable, Advanced, Effortless, Instant, Seamless"
     power_word_line = (
-        "Exactly 3 titles must include at least one power word (Best, Top, Easy, Simple, Proven, Smart, Quick, Complete)."
+        f'Exactly 3 of the 6 titles must each include exactly ONE natural power word from this list, placed directly before the keyword phrase as a single adjective (e.g. "Smart {primary_keywords[0]}"): {power_word_catalog}. The other 3 titles must contain NONE of these words and no other hype adjective.'
         if include_power_words
-        else "Do not use power words like Best, Top, Easy, Simple, Proven, Smart, Quick, or Complete."
+        else f"Do not use any power or hype words in any title (avoid all of: {power_word_catalog})."
     )
 
     return f"""You are a Lead SEO Content Strategist and Senior Copywriter specializing in Pakistani commerce, B2B software, tax compliance, and retail ecosystems.
@@ -689,6 +728,7 @@ STRICT EDITORIAL RULES
 - Avoid clickbait fluff: No empty buzzwords ("Skyrocket your revenue", "Revolutionize your world"). Make the value proposition clear and grounded in Pakistani business realities.
 - Target Length: 7 to 14 words per title.
 - {power_word_line}
+- Never repeat the keyword phrase twice in the same title, and never append it again after a colon at the end.
 - After each title, provide one meta description in simple English with a maximum of 10 words.
 
 ==================================================
@@ -1300,7 +1340,7 @@ def api_trends():
 
 @app.route("/api/titles/<path:keyword>")
 def api_titles(keyword):
-    keyword = keyword.strip()
+    keyword = unquote_plus(keyword or "").strip()
     if not keyword:
         return jsonify({"error": "Please enter a keyword first."}), 400
 
@@ -1340,7 +1380,7 @@ def api_titles(keyword):
 
 @app.route("/api/generate/<path:keyword>")
 def api_generate(keyword):
-    keyword = request.args.get("primary_keyword", keyword).strip()
+    keyword = unquote_plus(request.args.get("primary_keyword", keyword) or "").strip()
     chosen_title = request.args.get("title")
     blog_purpose = request.args.get("purpose", "")
     audience_questions = request.args.get("questions", "")
