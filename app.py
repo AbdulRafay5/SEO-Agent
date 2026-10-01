@@ -82,6 +82,16 @@ qwen_client = Groq(api_key=qwen_key) if qwen_key else None
 GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "openai/gpt-oss-120b"
 QWEN_TITLE_MODEL = "qwen/qwen3.8-27b"
+POWER_WORDS = [
+    "Best",
+    "Top",
+    "Easy",
+    "Simple",
+    "Proven",
+    "Smart",
+    "Quick",
+    "Complete",
+]
 
 
 def generate_ai_text(prompt, max_tokens):
@@ -508,7 +518,114 @@ def enforce_secondary_keywords(body, secondary_keywords):
     return body
 
 
-def build_title_prompt(chosen_keyword):
+def parse_primary_keywords(raw_keyword):
+    parts = re.split(r"[,;|\n]+", raw_keyword or "")
+    cleaned = []
+    seen = set()
+    for part in parts:
+        phrase = re.sub(r"\s+", " ", part).strip()
+        if not phrase:
+            continue
+        key = phrase.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(phrase)
+    return cleaned or [re.sub(r"\s+", " ", (raw_keyword or "")).strip()]
+
+
+def normalize_for_match(text):
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", (text or "").casefold())).strip()
+
+
+def title_contains_phrase(title, phrase):
+    normalized_title = normalize_for_match(title)
+    normalized_phrase = normalize_for_match(phrase)
+    return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
+
+
+def limit_words(text, max_words):
+    words = re.findall(r"\S+", (text or "").strip())
+    return " ".join(words[:max_words])
+
+
+def ensure_title_has_keywords(title, primary_keywords):
+    fixed = re.sub(r"\s+", " ", (title or "").strip())
+    if not fixed:
+        fixed = "Practical Guide"
+    missing = [kw for kw in primary_keywords if kw and not title_contains_phrase(fixed, kw)]
+    if not missing:
+        return fixed
+    suffix = " and ".join(missing)
+    return re.sub(r"\s+", " ", f"{fixed}: {suffix}").strip()
+
+
+def title_has_power_word(title):
+    lowered = f" {title.casefold()} "
+    return any(f" {word.casefold()} " in lowered for word in POWER_WORDS)
+
+
+def remove_power_words(text):
+    cleaned = text
+    for word in POWER_WORDS:
+        cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip(" -:,")
+
+
+def add_power_word(text):
+    if title_has_power_word(text):
+        return text
+    return f"Best {text}".strip()
+
+
+def normalize_meta_description(meta, primary_keywords):
+    cleaned = re.sub(r"\s+", " ", (meta or "").strip())
+    if not cleaned:
+        cleaned = f"Simple guide for {primary_keywords[0]} in Pakistan"
+    cleaned = limit_words(cleaned, 10)
+    if not cleaned:
+        cleaned = limit_words(f"Guide for {primary_keywords[0]}", 10)
+    return cleaned
+
+
+def enforce_title_rules(options, primary_keywords, include_power_words):
+    normalized = []
+    for option in options:
+        title = ensure_title_has_keywords(option.get("title", ""), primary_keywords)
+        meta_description = normalize_meta_description(option.get("meta_description", ""), primary_keywords)
+        normalized.append({"title": title, "meta_description": meta_description})
+
+    target_power_count = 3 if include_power_words else 0
+    power_indices = [idx for idx, item in enumerate(normalized) if title_has_power_word(item["title"])]
+
+    if len(power_indices) > target_power_count:
+        for idx in power_indices[target_power_count:]:
+            normalized[idx]["title"] = remove_power_words(normalized[idx]["title"])
+
+    if len(power_indices) < target_power_count:
+        needed = target_power_count - len(power_indices)
+        for idx, item in enumerate(normalized):
+            if needed <= 0:
+                break
+            if not title_has_power_word(item["title"]):
+                item["title"] = add_power_word(item["title"])
+                needed -= 1
+
+    for item in normalized:
+        item["title"] = ensure_title_has_keywords(item["title"], primary_keywords)
+        item["meta_description"] = normalize_meta_description(item["meta_description"], primary_keywords)
+
+    return normalized
+
+
+def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
+    keyword_list = "\n".join(f"- {kw}" for kw in primary_keywords)
+    power_word_line = (
+        "Exactly 3 titles must include at least one power word (Best, Top, Easy, Simple, Proven, Smart, Quick, Complete)."
+        if include_power_words
+        else "Do not use power words like Best, Top, Easy, Simple, Proven, Smart, Quick, or Complete."
+    )
+
     return f"""You are a Lead SEO Content Strategist and Senior Copywriter specializing in Pakistani commerce, B2B software, tax compliance, and retail ecosystems.
 
 You write headlines for ExampleBrand (a Pakistani POS, ERP, invoicing, inventory, and tax compliance platform).
@@ -543,7 +660,10 @@ PHASE 2: COPYWRITING & HEADLINE STRATEGY
 ==================================================
 Generate exactly 6 distinct, eye-catching, high-CTR blog headlines.
 
-Write in natural, confident, and professional English that real Pakistani founders, shopkeepers, accountants, and executives will click.
+Write in very simple English that people in Pakistan can understand quickly.
+
+PRIMARY KEYWORDS THAT MUST APPEAR IN EVERY TITLE:
+{keyword_list}
 
 DO NOT use identical sentence structures across your options. Use 6 completely different editorial angles:
 
@@ -565,46 +685,85 @@ STRICT EDITORIAL RULES
 ==================================================
 - Preserve the exact intent: If the query is about "SRB", the articles must genuinely discuss Sindh Revenue Board issues (tax rates, POS integration, filing, software requirements, service tax rules).
 - Retain specific locations: If Karachi, Rawalpindi, Lahore, or Sindh is in the search query, keep it. Do not invent cities if none are specified.
-- Natural flow: Do not awkwardly force exact-match keywords if they break grammar. Write fluid English.
+- Use all the primary keywords listed above in every title.
 - Avoid clickbait fluff: No empty buzzwords ("Skyrocket your revenue", "Revolutionize your world"). Make the value proposition clear and grounded in Pakistani business realities.
 - Target Length: 7 to 14 words per title.
+- {power_word_line}
+- After each title, provide one meta description in simple English with a maximum of 10 words.
 
 ==================================================
 OUTPUT FORMAT
 ==================================================
-Output ONLY the 6 titles as a numbered list. Do not include markdown bolding, intro chatter, quotation marks, or labels like "Option #" or "H1".
+Output ONLY the 6 title options as a numbered list.
+Each line format must be:
+1. <Title> || <Meta description max 10 words>
 
-1. Title
-2. Title
-3. Title
-4. Title
-5. Title
-6. Title"""
+Do not include markdown bolding, intro chatter, quotation marks, or labels like "Option #" or "H1".
+
+1. Title || Meta description
+2. Title || Meta description
+3. Title || Meta description
+4. Title || Meta description
+5. Title || Meta description
+6. Title || Meta description"""
 
 
-def get_fallback_titles(keyword):
-    keyword = keyword.strip()
-    return [
-        f"A Practical Guide to {keyword} for Pakistani Business Owners",
-        f"Key Requirements and Compliance Rules for {keyword}",
-        f"Common Costly Mistakes Businesses Make with {keyword}",
-        f"What to Check Before Setting Up {keyword}",
-        f"How to Automate and Streamline {keyword} in 2026",
-        f"Managing {keyword} Efficiently with ExampleBrand",
+def get_fallback_title_options(primary_keywords, include_power_words):
+    joined = " and ".join(primary_keywords)
+    options = [
+        {"title": f"Complete guide to {joined} for Pakistan businesses", "meta_description": f"Simple guide for {primary_keywords[0]} in Pakistan"},
+        {"title": f"Easy steps to use {joined} in daily business", "meta_description": f"Learn practical steps for {primary_keywords[0]}"},
+        {"title": f"Best way to start {joined} without confusion", "meta_description": f"Start {primary_keywords[0]} the easy way"},
+        {"title": f"Common mistakes in {joined} and how to avoid", "meta_description": f"Avoid mistakes while using {primary_keywords[0]}"},
+        {"title": f"Simple checklist before choosing {joined} software", "meta_description": f"Checklist for better {primary_keywords[0]} decisions"},
+        {"title": f"How ExampleBrand helps with {joined} in 2026", "meta_description": f"ExampleBrand support for {primary_keywords[0]} workflows"},
     ]
+    return enforce_title_rules(options, primary_keywords, include_power_words)
 
 
-def extract_title_options(raw_text, keyword):
-    candidates = extract_ai_title_candidates(raw_text)
+def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
+    options = []
 
-    fallback_titles = get_fallback_titles(keyword)
-    for title in fallback_titles:
-        if len(candidates) >= 6:
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if not re.match(r"^\s*\d+\s*[.)]\s+", line):
+            continue
+
+        cleaned = re.sub(r"^\s*\d+\s*[.)]\s*", "", line).strip().strip('"\'`*#')
+        if not cleaned:
+            continue
+
+        title = cleaned
+        meta_description = ""
+        if "||" in cleaned:
+            left, right = cleaned.split("||", 1)
+            title = left.strip()
+            meta_description = re.sub(r"^(meta|description)\s*[:\-]\s*", "", right.strip(), flags=re.IGNORECASE)
+        elif " - " in cleaned:
+            left, right = cleaned.rsplit(" - ", 1)
+            if len(right.split()) <= 10:
+                title = left.strip()
+                meta_description = right.strip()
+
+        if len(title.split()) < 4 or not re.search(r"[A-Za-z]", title):
+            continue
+
+        if title.lower() in {item["title"].lower() for item in options}:
+            continue
+
+        options.append({"title": title, "meta_description": meta_description})
+
+    fallback_options = get_fallback_title_options(primary_keywords, include_power_words)
+    for option in fallback_options:
+        if len(options) >= 6:
             break
-        if title.lower() not in {candidate.lower() for candidate in candidates}:
-            candidates.append(title)
+        if option["title"].lower() not in {item["title"].lower() for item in options}:
+            options.append(option)
 
-    return candidates[:6]
+    options = enforce_title_rules(options[:6], primary_keywords, include_power_words)
+    return options
 
 
 def extract_ai_title_candidates(raw_text):
@@ -1145,25 +1304,35 @@ def api_titles(keyword):
     if not keyword:
         return jsonify({"error": "Please enter a keyword first."}), 400
 
+    power_words_mode = request.args.get("power_words", "no").strip().lower()
+    include_power_words = power_words_mode in {"yes", "true", "1", "on"}
+    primary_keywords = parse_primary_keywords(keyword)
+
     try:
-        prompt = build_title_prompt(keyword)
+        prompt = build_title_prompt(keyword, primary_keywords, include_power_words)
         raw_text = generate_title_text(prompt, max_tokens=1200)
 
         ai_titles = extract_ai_title_candidates(raw_text)
-        titles = extract_title_options(raw_text, keyword)
+        title_options = extract_title_meta_options(raw_text, primary_keywords, include_power_words)
+        titles = [item["title"] for item in title_options]
 
         return jsonify({
             "keyword": keyword,
             "titles": titles,
+            "title_options": title_options,
+            "power_words_enabled": include_power_words,
             "source": "ai" if ai_titles else "fallback",
             "notice": None if ai_titles else "The AI returned no usable title lines, so relevant local titles were supplied."
         })
 
     except Exception as e:
         app.logger.exception("AI title request failed")
+        fallback_options = get_fallback_title_options(primary_keywords, include_power_words)
         return jsonify({
             "keyword": keyword,
-            "titles": get_fallback_titles(keyword),
+            "titles": [item["title"] for item in fallback_options],
+            "title_options": fallback_options,
+            "power_words_enabled": include_power_words,
             "source": "fallback",
             "notice": "AI title generation failed, so relevant local title ideas were supplied."
         })
