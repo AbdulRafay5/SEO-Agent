@@ -1820,8 +1820,7 @@ function renderRepositoryCards(){
         <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${blog.preview||''}</div>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <a href="/blog/${blog.filename}" target="_blank" style="font-size:13px;font-weight:600;color:var(--accent);text-decoration:underline;text-underline-offset:3px">Open →</a>
-        <div style="display:flex;gap:4px">
+          <div style="display:flex;gap:4px;margin-left:auto">
           <button onclick="openDraft('${blog.filename}')" class="btn btn-ghost btn-sm" style="font-size:12px">Load in Studio</button>
           <button onclick="requestDeleteBlog('${blog.filename}')" class="btn btn-danger btn-sm" aria-label="Delete article">
             <i data-lucide="trash-2" style="width:14px;height:14px" aria-hidden="true"></i>
