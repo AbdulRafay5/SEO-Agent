@@ -213,6 +213,21 @@ def count_markdown_links(text):
     return re.findall(r"\[[^\]]+\]\((https?://[^\)]+)\)", text)
 
 
+def create_blog_slug(title_or_keyword):
+    """Create a stable, filesystem-safe slug from the article title or keyword."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (title_or_keyword or "blog").lower()).strip("_")
+    return slug or "blog"
+
+
+def create_unique_blog_filename(keyword, title=None):
+    """Return a unique markdown filename based on the article heading."""
+    base_title = (title or keyword or "blog").strip()
+    base = create_blog_slug(base_title)
+    suffix = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+    unique = f"{base}_{suffix}_{random.randint(1000, 9999)}.md"
+    return unique
+
+
 AUTHORITY_EXTERNAL_LINKS = {
     "FBR": "https://www.fbr.gov.pk/",
     "SRB": "https://srb.gos.pk/",
@@ -1245,8 +1260,8 @@ def api_generate(keyword):
         keyword_count = body.lower().count(keyword.lower())
         rate_per_1000 = round((keyword_count / word_count) * 1000, 1) if word_count else 0
 
-        safe_filename = keyword.lower().replace(" ", "_")
-        filepath = os.path.join(BLOGS_FOLDER, f"{safe_filename}.md")
+        safe_filename = create_unique_blog_filename(keyword, chosen_title or meta_title)
+        filepath = os.path.join(BLOGS_FOLDER, safe_filename)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(body)
 
@@ -1256,12 +1271,12 @@ def api_generate(keyword):
         # silent no-op and the local-disk copy above still works as before.
         try:
             github_store.save_file(
-                f"{DRAFTS_REPO_DIR}/{safe_filename}.md",
+                f"{DRAFTS_REPO_DIR}/{safe_filename}",
                 body,
                 message=f"Generate draft: {keyword}",
             )
             _upsert_manifest_entry({
-                "filename": f"{safe_filename}.md",
+                "filename": safe_filename,
                 "keyword": keyword,
                 "wordCount": word_count,
                 "createdAt": time.strftime("%b %d, %Y \u00b7 %H:%M UTC", time.gmtime()),
@@ -1287,7 +1302,7 @@ def api_generate(keyword):
             "rate_per_1000": rate_per_1000,
             "photo_count": photo_count,
             "diagram_count": diagram_count,
-            "filename": f"{safe_filename}.md"
+            "filename": safe_filename
         })
 
     except Exception as e:
