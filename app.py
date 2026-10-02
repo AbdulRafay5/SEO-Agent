@@ -1190,9 +1190,11 @@ FAQ REQUIREMENT:
   leave a question unanswered.
 
 MEDIA RULES:
-- Include 2-4 image markers ONLY in sections where a photo genuinely adds value (e.g. illustrating
-  a physical process like scanning, counting stock, or reviewing a dashboard). Skip sections where
-  an image would be filler.
+- Include exactly 4-5 image markers, each placed ONLY in a section where a photo genuinely fits
+  the surrounding text (e.g. illustrating a physical process like scanning, counting stock, or
+  reviewing a dashboard that the paragraph right before it is actually describing). Do not force
+  an image into a section whose content has nothing visual to show - pick the 4-5 sections across
+  the article that best lend themselves to a real photo.
 - Each [IMAGE: ...] description MUST be unique and describe the SPECIFIC scene relevant to the
   section it appears in - never reuse the same wording twice, and never copy the example below
   verbatim. Example only (write your own for each marker): [IMAGE: retail pharmacist checking inventory stock at counter]
