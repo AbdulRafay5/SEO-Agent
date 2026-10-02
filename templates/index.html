@@ -1176,8 +1176,8 @@ function renderRecentDrafts(){
 }
 
 function openDraft(filename){
-  const blog=savedBlogs.find(b=>b.filename===filename);
-  if(!blog||!blog.content)return;
+  let blog=savedBlogs.find(b=>b.filename===filename);
+  if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
   document.getElementById('markdown-rendered-view').innerHTML=marked.parse(blog.content);
   document.getElementById('markdown-raw-view').value=blog.content;
@@ -1186,6 +1186,38 @@ function openDraft(filename){
   setEditorTab('rendered');
   updateMetrics({word_count:blog.wordCount||0,rate_per_1000:0,diagram_count:0,photo_count:0});
   switchTab('studio');
+}
+
+/* Covers articles that only exist server-side (saved to the GitHub drafts
+   repo but never generated/opened in this browser, so they have no cached
+   .content in savedBlogs yet) - fetches the raw markdown on demand. */
+async function loadDraftFromServer(filename){
+  try{
+    const res=await fetch('/api/blog/'+encodeURIComponent(filename));
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Could not load this article');
+
+    const blog={
+      id:Date.now(),keyword:data.keyword,filename:data.filename,
+      content:data.content,wordCount:data.word_count,
+      createdAt:serverFileMeta[filename]?.createdAt||'On server',
+      preview:(data.content.substring(0,180))+'…'
+    };
+    savedBlogs.unshift(blog);
+    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    updateHeaderCounters();
+
+    rawBlogContent=blog.content;
+    document.getElementById('markdown-rendered-view').innerHTML=marked.parse(blog.content);
+    document.getElementById('markdown-raw-view').value=blog.content;
+    document.getElementById('target-keyword').value=blog.keyword||'';
+    setOutputState('rendered');
+    setEditorTab('rendered');
+    updateMetrics({word_count:blog.wordCount||0,rate_per_1000:0,diagram_count:0,photo_count:0});
+    switchTab('studio');
+  }catch(err){
+    showToast(err.message||'Could not load this article','error');
+  }
 }
 
 /* ─── quick keyword chips ─── */
