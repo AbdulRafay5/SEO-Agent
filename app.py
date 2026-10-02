@@ -734,7 +734,13 @@ def ensure_title_has_keywords(title, primary_keywords):
     fixed = re.sub(r"\s+", " ", (title or "").strip())
     if not fixed:
         fixed = primary_keywords[0]
-    missing = [kw for kw in primary_keywords if kw and not title_contains_phrase(fixed, kw)]
+    # Phrases longer than 6 words are treated as a free-form heading/angle rather
+    # than an SEO keyword, so they're only used as creative inspiration in the
+    # prompt and never force-appended verbatim onto every title.
+    missing = [
+        kw for kw in primary_keywords
+        if kw and len(kw.split()) <= 6 and not title_contains_phrase(fixed, kw)
+    ]
     if missing:
         suffix = " | ".join(missing)
         fixed = f"{fixed} | {suffix}"
