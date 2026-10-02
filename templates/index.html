@@ -1411,8 +1411,10 @@ async function readApiResponse(res){
 
 /* ─── BRAINSTORM TITLES ─── */
 async function fetchTitleOptions(){
-  const kw=document.getElementById('target-keyword').value.trim();
-  if(!kw){showToast('Enter a primary keyword first','warning');return;}
+  const heading=document.getElementById('article-heading').value.trim();
+  const primaryKw=document.getElementById('target-keyword').value.trim();
+  const kw=heading||primaryKw;
+  if(!kw){showToast('Enter a heading or primary keyword first','warning');return;}
   const powerWordsMode=(document.getElementById('power-words-mode')?.value||'no').toLowerCase();
   const btn=document.getElementById('btn-fetch-titles');
   const btnText=document.getElementById('btn-titles-text');
