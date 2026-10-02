@@ -66,7 +66,14 @@ _repo_settings = github_store.load_settings()
 gemini_key = os.getenv("GEMINI_API_KEY") or dotenv_settings.get("GEMINI_API_KEY")
 groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
 qwen_key = os.getenv("QWEN_API_KEY") or dotenv_settings.get("QWEN_API_KEY")
-pexels_key = _repo_settings.get("pexelsApiKey") or os.getenv("PEXELS_API_KEY") or dotenv_settings.get("PEXELS_API_KEY")
+pexels_key = (
+    _repo_settings.get("pexelsApiKey")
+    or _repo_settings.get("PEXELS_API_KEY")
+    or os.getenv("PEXELS_API_KEY")
+    or dotenv_settings.get("PEXELS_API_KEY")
+    or ""
+).strip()
+
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 client = Groq(api_key=groq_key)
 qwen_client = Groq(api_key=qwen_key) if qwen_key else None
@@ -123,37 +130,64 @@ def generate_title_text(prompt, max_tokens):
     return generate_ai_text(prompt, max_tokens)
 
 
-def sanitize_pexels_query(raw_query, primary_keyword=""):
+# ============================================================================
+# PEXELS & VISUAL ASSETS FIX
+# ============================================================================
+
+def clean_image_search_query(raw_query, primary_keyword=""):
+    """Extract 2-4 clean, searchable nouns so Pexels never returns 0 results."""
     clean = re.sub(
-        r"(?i)\b(image|photo|photograph|illustration|picture|depicting|showing|a\s+view\s+of|conceptual|shot\s+of|realistic)\b",
+        r"(?i)\b(image|photo|photograph|illustration|picture|depicting|showing|a\s+view\s+of|conceptual|shot\s+of|realistic|vector|graphic)\b",
         "",
         raw_query,
     )
-    clean = re.sub(r"[^\w\s]", " ", clean)
+    clean = re.sub(r"[^\w\s]", " ", clean).strip()
     words = [w for w in clean.split() if len(w) > 2]
-    target_terms = words[:3]
-    if primary_keyword:
-        kw_words = [w for w in re.sub(r"[^\w\s]", "", primary_keyword).split() if len(w) > 3][:2]
-        if not any(k.lower() in [t.lower() for t in target_terms] for k in kw_words):
-            target_terms = kw_words[:1] + target_terms[:2]
+    
+    if len(words) >= 2:
+        return " ".join(words[:3])
 
-    search_phrase = " ".join(target_terms).strip()
-    return search_phrase or "retail store cash counter"
+    if primary_keyword:
+        kw_clean = re.sub(r"(?i)\b(software|system|management|in\s+pakistan)\b", "", primary_keyword)
+        kw_words = [w for w in re.sub(r"[^\w\s]", " ", kw_clean).split() if len(w) > 2]
+        if kw_words:
+            return f"{kw_words[0]} store counter"
+
+    return "retail counter cashier"
 
 
 def get_pexels_image(query, primary_keyword=""):
-    fallback_image = "https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=1200&q=80"
+    fallback_image = "https://picsum.photos/1200/800"
     if not pexels_key:
         return fallback_image
 
-    refined_query = sanitize_pexels_query(query, primary_keyword)
+    search_query = clean_image_search_query(query, primary_keyword)
     headers = {"Authorization": pexels_key}
-    params = {"query": refined_query, "per_page": 1, "orientation": "landscape"}
+    params = {"query": search_query, "per_page": 1, "orientation": "landscape"}
+
     try:
-        response = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params, timeout=5)
-        data = response.json()
-        if data.get("photos") and len(data["photos"]) > 0:
-            return data["photos"][0]["src"]["large"]
+        response = requests.get(
+            "https://api.pexels.com/v1/search",
+            headers=headers,
+            params=params,
+            timeout=7,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("photos") and len(data["photos"]) > 0:
+                return data["photos"][0]["src"]["large"]
+    except Exception as e:
+        app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
+
+    # Broad single-word fallback query
+    try:
+        broad_word = primary_keyword.split()[0] if primary_keyword else "retail"
+        fallback_params = {"query": f"{broad_word} business", "per_page": 1, "orientation": "landscape"}
+        fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
+        if fallback_res.status_code == 200:
+            data = fallback_res.json()
+            if data.get("photos") and len(data["photos"]) > 0:
+                return data["photos"][0]["src"]["large"]
     except Exception:
         pass
 
@@ -196,35 +230,7 @@ def extract_bracket_blocks(text, start_marker):
     return blocks
 
 
-def prune_end_image_spam(body):
-    terminal_markers = [
-        r"(##\s*Frequently Asked Questions)",
-        r"(##\s*FAQs?)",
-        r"(##\s*Conclusion)",
-        r"(##\s*Summary)",
-    ]
-
-    lowest_split_idx = None
-    for pattern in terminal_markers:
-        match = re.search(pattern, body, re.IGNORECASE)
-        if match:
-            idx = match.start()
-            if lowest_split_idx is None or idx < lowest_split_idx:
-                lowest_split_idx = idx
-
-    if lowest_split_idx is not None:
-        main_content = body[:lowest_split_idx]
-        tail_content = body[lowest_split_idx:]
-        tail_content = re.sub(r"\[IMAGE:[^\]]+\]", "", tail_content)
-        tail_content = re.sub(r"\n{3,}", "\n\n", tail_content)
-        body = main_content + tail_content
-
-    body = re.sub(r"(\[IMAGE:[^\]]+\])(\s*\[IMAGE:[^\]]+\])+", r"\1", body)
-    return body
-
-
 def replace_image_markers(blog_text, primary_keyword=""):
-    blog_text = prune_end_image_spam(blog_text)
     image_blocks = extract_bracket_blocks(blog_text, "[IMAGE:")
     diagram_blocks = extract_bracket_blocks(blog_text, "[DIAGRAM:")
 
@@ -284,7 +290,6 @@ AUTHORITY_EXTERNAL_LINKS = {
 
 
 def get_external_links_for_keyword(keyword):
-    """Return relevant authority links based on tax authorities mentioned in keyword."""
     matched = []
     for authority, (url, label) in AUTHORITY_EXTERNAL_LINKS.items():
         if authority in keyword.upper():
@@ -296,10 +301,6 @@ def get_external_links_for_keyword(keyword):
 
 
 def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, min_external=2):
-    """
-    Seamlessly weaves missing internal and external links directly into body prose
-    without creating artificial, robotic bulleted lists at the bottom.
-    """
     existing_links = [url for _, url in count_markdown_links(body)]
     paragraphs = body.split("\n\n")
 
@@ -318,7 +319,6 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
     current_internal_count = sum(1 for url in existing_links if "example.com" in url)
     current_external_count = len(existing_links) - current_internal_count
 
-    # 1. Weave primary ExampleBrand internal link if missing
     if current_internal_count < min_internal and primary_internal_link not in existing_links:
         for idx in eligible_indices:
             p = paragraphs[idx]
@@ -333,7 +333,6 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
                 current_internal_count += 1
                 break
 
-    # 2. Weave demo contact link naturally
     if current_internal_count < min_internal and CONTACT_URL not in existing_links:
         for idx in reversed(eligible_indices):
             p = paragraphs[idx]
@@ -343,7 +342,6 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
                 current_internal_count += 1
                 break
 
-    # 3. Weave additional internal links
     if current_internal_count < min_internal:
         extra_pool = get_extra_internal_link_pool(keyword, limit=4)
         for url in extra_pool:
@@ -360,7 +358,6 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
                     current_internal_count += 1
                     break
 
-    # 4. Weave external authority links
     if current_external_count < min_external:
         ext_targets = get_external_links_for_keyword(keyword)
         for url, label in ext_targets:
@@ -526,6 +523,10 @@ def enforce_secondary_keywords(body, secondary_keywords):
     return body
 
 
+# ============================================================================
+# PERSUASIVE & BALANCED TITLE GENERATION (COMMERCIAL + INFORMATIONAL)
+# ============================================================================
+
 def parse_primary_keywords(raw_keyword):
     parts = re.split(r"[,;|\n]+", raw_keyword or "")
     cleaned = []
@@ -552,7 +553,7 @@ def title_contains_phrase(title, phrase):
     return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
 
 
-def limit_words(text, max_words=14):
+def limit_words(text, max_words=10):
     words = re.findall(r"\S+", (text or "").strip())
     if len(words) <= max_words:
         return text.strip()
@@ -567,7 +568,7 @@ def ensure_title_has_keywords(title, primary_keywords):
     if missing:
         suffix = " | ".join(missing)
         fixed = f"{fixed} | {suffix}"
-    return limit_words(fixed, max_words=14)
+    return limit_words(fixed, max_words=10)
 
 
 def title_has_power_word(title):
@@ -580,7 +581,7 @@ def remove_power_words(text):
     for word in POWER_WORDS:
         cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" |:-.,")
-    return limit_words(cleaned, max_words=14)
+    return limit_words(cleaned, max_words=10)
 
 
 def find_phrase_start(text, phrase):
@@ -600,15 +601,15 @@ def add_power_word(title, primary_keywords, word):
             after = title[idx:]
             glue = f"{before} " if before else ""
             res = re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
-            return limit_words(res, max_words=14)
+            return limit_words(res, max_words=10)
     res = re.sub(r"\s+", " ", f"{word} {title}").strip()
-    return limit_words(res, max_words=14)
+    return limit_words(res, max_words=10)
 
 
 def normalize_meta_description(meta, primary_keywords):
     cleaned = re.sub(r"\s+", " ", (meta or "").strip())
     if not cleaned:
-        cleaned = f"Learn how to manage {primary_keywords[0]} in Pakistan. Simple guide to billing, reporting, and daily operations."
+        cleaned = f"Compare features, pricing, and key integrations for {primary_keywords[0]} in Pakistan. Simple guide for business owners."
     if len(cleaned) > 160:
         cleaned = cleaned[:157].rsplit(" ", 1)[0] + "..."
     return cleaned
@@ -654,76 +655,86 @@ def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
     power_word_catalog = "Best, Top, Easy, Simple, Proven, Smart, Quick, Complete, Fast, Modern, Powerful, Ultimate, Essential, Efficient, Affordable, Reliable, Advanced, Effortless, Instant, Seamless"
 
     power_rule = (
-        f"""POWER WORD REQUIREMENT (EXACTLY 3 OF THE 6 TITLES):
-- Exactly THREE of the six titles must contain ONE simple power word from: {power_word_catalog}.
-- The other THREE titles MUST NOT contain any of those power words."""
+        f"""POWER WORDS (EXACTLY 3 OF THE 6 TITLES):
+- Exactly THREE titles must feature ONE natural power word from: {power_word_catalog}.
+- The remaining THREE titles MUST NOT contain any of those power words."""
         if include_power_words
-        else f"""Do not use any hype or power words in any of the six titles (avoid: {power_word_catalog})."""
+        else f"""Do not include any power or hype words in any of the six titles (avoid: {power_word_catalog})."""
     )
 
-    return f"""You are a Lead SEO Copywriter for ExampleBrand in Pakistan[cite: 1, 51].
+    return f"""You are a High-Converting B2B & Retail Headline Specialist for ExampleBrand in Pakistan[cite: 1, 51].
 
 PRIMARY SEARCH QUERY:
 "{chosen_keyword}"
 
 CURRENT YEAR: 2026.
 
-MANDATORY PRIMARY KEYWORDS (ALL MUST BE NATURALLY PRESENT IN EVERY TITLE):
+MANDATORY PRIMARY KEYWORDS (MUST APPEAR NATURALLY IN EVERY TITLE):
 {keyword_list}
 
 ==================================================
-CRITICAL TITLE STYLE & LENGTH RULES:
+HEADLINE CRITERIA (PERSUASIVE, COMMERCIAL & INFORMATIONAL):
 ==================================================
-1. TITLE LENGTH: Each title should be between 8-14 words for optimal SEO and readability[cite: 51].
-2. SIMPLICITY: Use plain, simple English that shopkeepers and retail owners in Pakistan understand immediately[cite: 51].
-3. FORMAT: Short, punchy titles separated by '|' or clean dots.
-   Example formats:
-   - "FBR Digital Invoicing System | Upload, Validate & Report"
-   - "Free POS Software. Point of Sale System. Loyverse POS"
-   - "Best POS System in Pakistan 2026 | Top 7 Compared"
-   - "Pharmacy POS in Lahore | Easy Billing & Inventory"
-4. {power_rule}
-5. ALL primary keywords provided above must appear in every title[cite: 51].
-6. META DESCRIPTION: After each title, write a standard SEO meta description (120 to 155 characters) in clear, simple English[cite: 51].
+Generate exactly 6 distinct, eye-catching, and highly persuasive titles.
+
+1. INTENT SPLIT (3 COMMERCIAL + 3 INFORMATIONAL):
+   - Titles 1-3 MUST be COMMERCIAL / BUYER-FOCUSED (focus on choosing, comparisons, pricing, reviews, top systems):
+     Examples:
+     * "Best POS System in Pakistan 2026 | Top 7 Compared"
+     * "Free POS Software. Point of Sale System. Loyverse POS"
+     * "Top POS Software in Lahore | Pricing & Features"
+   - Titles 4-6 MUST be INFORMATIONAL / PROBLEM-SOLVING (focus on how-to, setup, avoiding errors, tax integration, daily workflows):
+     Examples:
+     * "FBR Digital Invoicing System | Upload, Validate & Report"
+     * "How to Setup Pharmacy POS Software | Practical Guide"
+     * "Common Retail Billing Mistakes and How to Avoid Them"
+
+2. STRICT LENGTH: Under 10 words per title (concise, punchy)[cite: 51].
+3. FORMAT: Use separators like '|', '.', or '—' to make headlines look modern and easy to scan.
+4. LANGUAGE: Plain, simple English that shop owners and retail managers in Pakistan understand instantly[cite: 51].
+5. {power_rule}
+6. META DESCRIPTION: Write an authentic, persuasive meta description (120 to 155 characters) for each title highlighting real benefits for Pakistani retailers[cite: 51].
 
 ==================================================
 OUTPUT FORMAT
 ==================================================
-Output exactly 6 lines. No extra markdown, no introductory fluff[cite: 51]:
-1. Title (8-14 words) || Meta description
-2. Title (8-14 words) || Meta description
-3. Title (8-14 words) || Meta description
-4. Title (8-14 words) || Meta description
-5. Title (8-14 words) || Meta description
-6. Title (8-14 words) || Meta description"""
+Output exactly 6 numbered lines. No introductory text, no bullet points[cite: 51]:
+1. Title (max 10 words) || Meta description
+2. Title (max 10 words) || Meta description
+3. Title (max 10 words) || Meta description
+4. Title (max 10 words) || Meta description
+5. Title (max 10 words) || Meta description
+6. Title (max 10 words) || Meta description"""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
     joined = " | ".join(primary_keywords)
     options = [
+        # Commercial / Buyer Intent
         {
-            "title": f"{joined} | Simple Business Guide 2026",
-            "meta_description": f"Learn everything about {primary_keywords[0]} in Pakistan. Simple guide to setup, billing, and key features for your store."
+            "title": f"Best {joined} in Pakistan | Top Reviewed",
+            "meta_description": f"Compare top features, pricing, and integrations for {primary_keywords[0]} in Pakistan. Find the perfect system for your counter."
         },
         {
-            "title": f"Easy {joined} | Fast Invoicing & Inventory",
-            "meta_description": f"Step by step guide to using {primary_keywords[0]}. Save time on calculations and manage your stock without confusion."
+            "title": f"{joined} Software | Pricing and Features 2026",
+            "meta_description": f"Explore affordable pricing, barcode scanning, and multi-branch tools for {primary_keywords[0]}. Boost counter productivity today."
         },
         {
-            "title": f"{joined}. Point of Sale System Software",
-            "meta_description": f"Compare top solutions for {primary_keywords[0]} in Pakistan. See how cloud and offline systems help daily retail counters."
+            "title": f"Top {joined} for Retail Stores Compared",
+            "meta_description": f"See how {primary_keywords[0]} compares against traditional khata. Choose the easiest system for your cash counter."
+        },
+        # Informational / Operational Intent
+        {
+            "title": f"{joined} | Setup, Invoicing and Reports",
+            "meta_description": f"Complete guide to managing {primary_keywords[0]}. Discover step-by-step setup, digital invoicing, and inventory control."
         },
         {
-            "title": f"Best {joined} in Pakistan | Full Review",
-            "meta_description": f"Discover the top features and pricing for {primary_keywords[0]}. Prevent daily errors and manage your accounts effortlessly."
+            "title": f"Common {joined} Mistakes and How to Fix",
+            "meta_description": f"Avoid costly cash drawer leaks and stockout errors. Practical operational tips for {primary_keywords[0]} users."
         },
         {
-            "title": f"{joined} | Common Mistakes and Easy Solutions",
-            "meta_description": f"Avoid common billing and tax errors with {primary_keywords[0]}. Practical advice designed for retail and wholesale business owners."
-        },
-        {
-            "title": f"ExampleBrand {joined} | Fast Daily Management",
-            "meta_description": f"See how ExampleBrand powers {primary_keywords[0]} with real-time stock alerts, digital invoicing, and local reporting."
+            "title": f"How to Automate {joined} | Practical Guide",
+            "meta_description": f"Streamline daily billing and tax filings with {primary_keywords[0]}. Save counter staff hours every single week."
         },
     ]
     return enforce_title_rules(options, primary_keywords, include_power_words)
@@ -752,7 +763,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
             title = left.strip()
             meta_description = right.strip()
 
-        title = limit_words(title, max_words=14)
+        title = limit_words(title, max_words=10)
 
         if len(title.split()) < 3 or not re.search(r"[A-Za-z]", title):
             continue
@@ -794,7 +805,7 @@ def extract_ai_title_candidates(raw_text):
         if "||" in cleaned:
             cleaned = cleaned.split("||")[0].strip()
 
-        cleaned = limit_words(cleaned, max_words=14)
+        cleaned = limit_words(cleaned, max_words=10)
 
         if len(cleaned.split()) < 3 or not re.search(r"[A-Za-z]", cleaned):
             continue
@@ -880,7 +891,7 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
         title_instruction = f'H1 title naming "{chosen_keyword}"'
 
     purpose_context = blog_purpose.strip() or "Create a practical, useful guide that satisfies the search intent behind the keyword."
-    questions_context = audience_questions.strip() or "No extra reader questions were provided; address everyday shop counter and billing challenges."
+    questions_context = audience_questions.strip() or "Address everyday retail, inventory, and point-of-sale challenges."
 
     tone_instructions = {
         "professional": "Use a professional, authoritative, and direct tone. Open directly with the real business problem or decision.",
@@ -916,17 +927,14 @@ EDITORIAL DIRECTION:
 The article MUST be at least {MIN_WORD_COUNT} words in the body content[cite: 51].
 
 ==================================================
-CRITICAL NATURAL LINKING INSTRUCTIONS:
+NATURAL IN-PROSE LINKING:
 ==================================================
-Do NOT dump links at the bottom or create a robotic "Related Links" bullet list.
-Instead, weave internal and external links directly into natural, flowing body sentences using contextual anchor text:
-1. WEAVE INTERNAL ExampleBrand LINKS naturally into paragraphs discussing features, pricing, or demos:
-   - Primary feature link: [{chosen_keyword} features]({internal_link})
-   - Free demo link: [Book a free ExampleBrand demo]({CONTACT_URL})
-   - Contextual internal pages to reference naturally if relevant:
+Weave links naturally into flowing sentences across relevant paragraphs. Never create a separate bulleted list of raw URLs:
+- Feature link: [{chosen_keyword} features]({internal_link})
+- Demo link: [Book a free ExampleBrand demo]({CONTACT_URL})
+- Other internal resources:
 {extra_links_text}
-
-2. WEAVE OFFICIAL EXTERNAL AUTHORITY LINKS directly into sentences discussing compliance, regulations, or definitions:
+- External official authorities:
 {ext_links_text}
 
 FORMAT REQUIREMENTS:
@@ -938,7 +946,7 @@ Then a blank line, followed by:
 Follow: {title_instruction}
 
 MEDIA RULES:
-- Include 3-5 relevant image markers: [IMAGE: concrete description of retail counter or shop scene]
+- Include 3-5 relevant image markers spread across the body: [IMAGE: shop cashier billing customer at counter]
 - Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Customer Order] --> B[POS Terminal] --> C[Digital Invoice]]
 
 Output only the finished article content - no extra conversational meta-commentary[cite: 51]."""
@@ -1057,9 +1065,7 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
     try:
         region_df = pytrends.interest_by_region(resolution=region_resolution, inc_low_vol=True)
     except Exception as error:
-        app.logger.warning(
-            "Google Trends interest-by-region request failed for %r: %s", keyword, error
-        )
+        app.logger.warning("Google Trends interest-by-region request failed for %r: %s", keyword, error)
         region_df = None
 
     region_data = _format_region_data(region_df, keyword)
@@ -1075,9 +1081,7 @@ def _query_google_trends(pytrends, keyword, timeframe, geo):
         top_queries = _format_related_queries(query_data.get("top"), keyword)
         rising_queries = _format_related_queries(query_data.get("rising"), keyword)
     except Exception as error:
-        app.logger.warning(
-            "Google Trends related-queries request failed for %r: %s", keyword, error
-        )
+        app.logger.warning("Google Trends related-queries request failed for %r: %s", keyword, error)
 
     return {
         "interest_over_time": interest,
@@ -1349,7 +1353,6 @@ def api_generate(keyword):
         body = collapse_duplicate_words(body)
         body = clean_keyword_artifacts(body, keyword)
 
-        # Natural In-Prose Linking Weaver
         internal_link = keyword_links.get(keyword, "https://example.com/pricing-plan/")
         body = weave_natural_links(body, keyword, internal_link)
 
