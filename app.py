@@ -552,7 +552,7 @@ def title_contains_phrase(title, phrase):
     return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
 
 
-def limit_words(text, max_words=10):
+def limit_words(text, max_words=14):
     words = re.findall(r"\S+", (text or "").strip())
     if len(words) <= max_words:
         return text.strip()
@@ -567,7 +567,7 @@ def ensure_title_has_keywords(title, primary_keywords):
     if missing:
         suffix = " | ".join(missing)
         fixed = f"{fixed} | {suffix}"
-    return limit_words(fixed, max_words=10)
+    return limit_words(fixed, max_words=14)
 
 
 def title_has_power_word(title):
@@ -580,7 +580,7 @@ def remove_power_words(text):
     for word in POWER_WORDS:
         cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" |:-.,")
-    return limit_words(cleaned, max_words=10)
+    return limit_words(cleaned, max_words=14)
 
 
 def find_phrase_start(text, phrase):
@@ -600,9 +600,9 @@ def add_power_word(title, primary_keywords, word):
             after = title[idx:]
             glue = f"{before} " if before else ""
             res = re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
-            return limit_words(res, max_words=10)
+            return limit_words(res, max_words=14)
     res = re.sub(r"\s+", " ", f"{word} {title}").strip()
-    return limit_words(res, max_words=10)
+    return limit_words(res, max_words=14)
 
 
 def normalize_meta_description(meta, primary_keywords):
@@ -674,7 +674,7 @@ MANDATORY PRIMARY KEYWORDS (ALL MUST BE NATURALLY PRESENT IN EVERY TITLE):
 ==================================================
 CRITICAL TITLE STYLE & LENGTH RULES:
 ==================================================
-1. MAXIMUM 10 WORDS PER TITLE: Each title MUST be short, clean, and strictly under 10 words[cite: 51].
+1. TITLE LENGTH: Each title should be between 8-14 words for optimal SEO and readability[cite: 51].
 2. SIMPLICITY: Use plain, simple English that shopkeepers and retail owners in Pakistan understand immediately[cite: 51].
 3. FORMAT: Short, punchy titles separated by '|' or clean dots.
    Example formats:
@@ -690,12 +690,12 @@ CRITICAL TITLE STYLE & LENGTH RULES:
 OUTPUT FORMAT
 ==================================================
 Output exactly 6 lines. No extra markdown, no introductory fluff[cite: 51]:
-1. Title (max 10 words) || Meta description
-2. Title (max 10 words) || Meta description
-3. Title (max 10 words) || Meta description
-4. Title (max 10 words) || Meta description
-5. Title (max 10 words) || Meta description
-6. Title (max 10 words) || Meta description"""
+1. Title (8-14 words) || Meta description
+2. Title (8-14 words) || Meta description
+3. Title (8-14 words) || Meta description
+4. Title (8-14 words) || Meta description
+5. Title (8-14 words) || Meta description
+6. Title (8-14 words) || Meta description"""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
@@ -752,7 +752,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
             title = left.strip()
             meta_description = right.strip()
 
-        title = limit_words(title, max_words=10)
+        title = limit_words(title, max_words=14)
 
         if len(title.split()) < 3 or not re.search(r"[A-Za-z]", title):
             continue
@@ -794,7 +794,7 @@ def extract_ai_title_candidates(raw_text):
         if "||" in cleaned:
             cleaned = cleaned.split("||")[0].strip()
 
-        cleaned = limit_words(cleaned, max_words=10)
+        cleaned = limit_words(cleaned, max_words=14)
 
         if len(cleaned.split()) < 3 or not re.search(r"[A-Za-z]", cleaned):
             continue
