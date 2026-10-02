@@ -1140,6 +1140,34 @@ EDITORIAL DIRECTION:
 The article MUST be at least {MIN_WORD_COUNT} words in the body content.
 
 ==================================================
+PROVEN CONTENT STRUCTURE (based on top-performing ExampleBrand articles):
+==================================================
+Follow this general flow, adapting section names naturally to fit "{chosen_keyword}" (skip any
+section that genuinely doesn't apply to this topic):
+1. OPENING (2-4 short paragraphs): Speak directly to the reader's real-world confusion or
+   pressure around this topic before explaining the solution - acknowledge what's hard, then
+   promise clarity.
+2. DEFINITION: An early "What is {chosen_keyword}?" style section stating plainly what it is
+   and what it requires or includes.
+3. KEY REQUIREMENTS OR CHALLENGES: A numbered section with short, scannable numbered points
+   instead of long paragraphs.
+4. STEP-BY-STEP PROCESS: An integration/implementation section broken into clearly labeled
+   Step 1, Step 2, Step 3... sub-steps.
+5. COST/PRICING: When relevant to software or compliance topics, include a realistic tiered
+   cost breakdown (e.g. one-time setup, monthly subscription, maintenance) in PKR.
+6. WHY ExampleBrand: A section explaining why ExampleBrand is the sensible choice, with short
+   numbered reasons (fast integration, affordable pricing, local support, all-in-one platform).
+7. FEATURES: A concise numbered features list.
+8. ELIGIBILITY (when relevant to tax/compliance topics): A "Who Must Use/Comply" numbered list.
+9. BENEFITS: A short numbered benefits list.
+10. PENALTIES (when relevant to tax/compliance topics): A short numbered penalties-for-
+    non-compliance list to reinforce urgency.
+11. CONCLUSION: Reinforce the stakes and position ExampleBrand as the easy path forward.
+Mix numbered ("1.", "2.") and lettered (i., ii., iii.) sub-bullets across different sections for
+visual variety - but every numbered item must still be a complete, useful sentence or phrase,
+never a bare fragment.
+
+==================================================
 CRITICAL NATURAL LINKING INSTRUCTIONS:
 ==================================================
 Never create a disconnected "Related Resources" or "Links" list. Weave hyperlinks directly into natural body sentences:
@@ -1151,17 +1179,15 @@ Never create a disconnected "Related Resources" or "Links" list. Weave hyperlink
 {ext_links_text}
 
 FORMAT REQUIREMENTS:
-Line 1: META_TITLE: <60 characters max, includes "{chosen_keyword}">
-Line 2: META_DESCRIPTION: <160 characters max, includes "{chosen_keyword}">
-
-Then a blank line, followed by:
+Start directly with:
 # Title
 Follow: {title_instruction}
 
 FAQ REQUIREMENT:
 - Near the end of the article, before the conclusion, include a "## Frequently Asked Questions"
-  section with 4-6 real questions a buyer would ask about "{chosen_keyword}", each with a concise
-  2-3 sentence answer in prose (not a table).
+  section with 4-6 real questions a buyer would ask about "{chosen_keyword}", labeled Q1, Q2, Q3...
+  EVERY question must have its own complete 2-3 sentence answer in prose (not a table) - never
+  leave a question unanswered.
 
 MEDIA RULES:
 - Include 2-4 image markers ONLY in sections where a photo genuinely adds value (e.g. illustrating
@@ -1572,9 +1598,7 @@ def api_generate(keyword):
 
         for attempt in range(3):
             raw_text = generate_ai_text(prompt, max_tokens=4000)
-            body_preview = re.sub(r"META_TITLE:.*\n?", "", raw_text)
-            body_preview = re.sub(r"META_DESCRIPTION:.*\n?", "", body_preview).strip()
-            body_preview = clean_keyword_artifacts(body_preview, keyword)
+            body_preview = clean_keyword_artifacts(raw_text.strip(), keyword)
             preview_word_count = len(body_preview.split())
             preview_density = keyword_density(body_preview, keyword)
 
@@ -1596,13 +1620,10 @@ def api_generate(keyword):
                 )
             prompt += "\n\nRevise the complete article based on this quality feedback:\n- " + "\n- ".join(feedback)
 
-        meta_title_match = re.search(r"META_TITLE:\s*(.*)", raw_text)
-        meta_desc_match = re.search(r"META_DESCRIPTION:\s*(.*)", raw_text)
-        meta_title = meta_title_match.group(1).strip() if meta_title_match else (chosen_title or keyword)
-        meta_description = meta_desc_match.group(1).strip() if meta_desc_match else ""
-
-        body = re.sub(r"META_TITLE:.*\n?", "", raw_text)
-        body = re.sub(r"META_DESCRIPTION:.*\n?", "", body).strip()
+        # The heading the user typed/selected IS the title - no separate AI-generated
+        # "meta title" is requested anymore, so it's derived straight from that heading.
+        meta_title = chosen_title or keyword
+        body = raw_text.strip()
 
         # Structural, typographical, and natural linking passes
         body = ensure_h1_title(body, chosen_title)
@@ -1623,6 +1644,9 @@ def api_generate(keyword):
         word_count = len(body.split())
         keyword_count = body.lower().count(keyword.lower())
         rate_per_1000 = round((keyword_count / word_count) * 1000, 1) if word_count else 0
+
+        first_paragraph = next((p.strip() for p in body.split("\n\n") if len(p.split()) > 10 and not p.lstrip().startswith("#")), "")
+        meta_description = (first_paragraph[:157].rsplit(" ", 1)[0] + "...") if len(first_paragraph) > 160 else first_paragraph
 
         safe_filename = create_unique_blog_filename(keyword, chosen_title or meta_title)
         filepath = os.path.join(BLOGS_FOLDER, safe_filename)
