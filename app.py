@@ -134,33 +134,50 @@ def generate_title_text(prompt, max_tokens):
 # PEXELS & IMAGE SANITIZATION
 # ============================================================================
 
-def clean_image_search_query(raw_query, primary_keyword=""):
+STOPWORDS = {
+    "the", "and", "for", "with", "from", "into", "onto", "over", "under", "near",
+    "that", "this", "their", "your", "its", "has", "have", "are", "was", "were",
+}
+
+
+def _is_acronym(word):
+    return word.isupper() and len(word) <= 4
+
+
+def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
     clean = re.sub(
         r"(?i)\b(image|photo|photograph|illustration|picture|depicting|showing|a\s+view\s+of|conceptual|shot\s+of|realistic|vector|graphic)\b",
         "",
         raw_query,
     )
     clean = re.sub(r"[^\w\s]", " ", clean).strip()
-    words = [w for w in clean.split() if len(w) > 2]
+    words = [w for w in clean.split() if len(w) > 2 and w.lower() not in STOPWORDS]
 
+    # Keep the model's full descriptive phrase (up to 5 words) instead of an
+    # arbitrary first-3-words slice, so the search stays specific to what the
+    # marker actually describes rather than losing its most distinctive terms.
     if len(words) >= 2:
-        return " ".join(words[:3])
+        return " ".join(words[:5])
 
-    if primary_keyword:
-        kw_clean = re.sub(r"(?i)\b(software|system|management|in\s+pakistan)\b", "", primary_keyword)
-        kw_words = [w for w in re.sub(r"[^\w\s]", " ", kw_clean).split() if len(w) > 2]
-        if kw_words:
-            return f"{kw_words[0]} pharmacy retail counter"
+    # Not enough to go on from the marker text alone - fall back to context,
+    # skipping acronyms (FBR, POS, SRB, GST...) which return meaningless photos.
+    context_words = [
+        w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
+        if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
+        and w.lower() not in {"software", "system", "management", "pakistan", "in"}
+    ]
+    if context_words:
+        return " ".join(context_words[:3]) + " retail counter"
 
     return "pharmacy medicine store counter"
 
 
-def get_pexels_image(query, primary_keyword=""):
+def get_pexels_image(query, primary_keyword="", section_context=""):
     fallback_image = "https://picsum.photos/1200/800"
     if not pexels_key:
         return fallback_image
 
-    search_query = clean_image_search_query(query, primary_keyword)
+    search_query = clean_image_search_query(query, primary_keyword, section_context)
     headers = {"Authorization": pexels_key}
     params = {"query": search_query, "per_page": 1, "orientation": "landscape"}
 
@@ -178,10 +195,15 @@ def get_pexels_image(query, primary_keyword=""):
     except Exception as e:
         app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
 
-    # Broad single-word fallback
+    # Broad fallback that stays on-topic instead of an unrelated single word
+    # or acronym (e.g. never search for "FBR store").
     try:
-        broad_word = primary_keyword.split()[0] if primary_keyword else "pharmacy"
-        fallback_params = {"query": f"{broad_word} store", "per_page": 1, "orientation": "landscape"}
+        fallback_words = [
+            w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
+            if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
+        ]
+        broad_query = f"{' '.join(fallback_words[:2])} retail store".strip() if fallback_words else "pharmacy retail store"
+        fallback_params = {"query": broad_query, "per_page": 1, "orientation": "landscape"}
         fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
         if fallback_res.status_code == 200:
             data = fallback_res.json()
@@ -229,12 +251,71 @@ def extract_bracket_blocks(text, start_marker):
     return blocks
 
 
+def distribute_media_markers(body):
+    """
+    Spreads out [IMAGE:...]/[DIAGRAM:...] markers that the model dumped together
+    (typically all at the end of the article) across different ## sections instead.
+    Markers already placed on their own elsewhere in the body are left untouched.
+    """
+    marker_pattern = re.compile(r"\[(?:IMAGE|DIAGRAM):[^\[\]]*\]")
+    paragraphs = body.split("\n\n")
+
+    def is_marker_only(p):
+        stripped = p.strip()
+        return bool(stripped) and marker_pattern.fullmatch(stripped) is not None
+
+    # Find runs of 2+ consecutive marker-only paragraphs - these are the clusters to fix.
+    clustered_markers = []
+    clustered_indices = set()
+    run = []
+    for idx, p in enumerate(paragraphs):
+        if is_marker_only(p):
+            run.append(idx)
+        else:
+            if len(run) >= 2:
+                clustered_markers.extend(paragraphs[i].strip() for i in run)
+                clustered_indices.update(run)
+            run = []
+    if len(run) >= 2:
+        clustered_markers.extend(paragraphs[i].strip() for i in run)
+        clustered_indices.update(run)
+
+    if not clustered_markers:
+        return body
+
+    remaining = [p for i, p in enumerate(paragraphs) if i not in clustered_indices]
+
+    heading_indices = [i for i, p in enumerate(remaining) if p.lstrip().startswith("## ")]
+    if not heading_indices:
+        return body
+
+    slots = heading_indices[: len(clustered_markers)] or heading_indices
+    for i, marker in enumerate(clustered_markers):
+        slot = slots[i % len(slots)]
+        # Insert after the section heading's first paragraph rather than mid-sentence.
+        target = slot + 1 if slot + 1 < len(remaining) else slot
+        remaining[target] = remaining[target].rstrip() + f"\n\n{marker}"
+
+    return "\n\n".join(remaining)
+
+
+def get_nearest_heading(text, position):
+    heading = ""
+    for match in re.finditer(r"^#{1,3}\s+(.+)$", text, re.MULTILINE):
+        if match.start() > position:
+            break
+        heading = match.group(1).strip()
+    return heading
+
+
 def replace_image_markers(blog_text, primary_keyword=""):
     image_blocks = extract_bracket_blocks(blog_text, "[IMAGE:")
     diagram_blocks = extract_bracket_blocks(blog_text, "[DIAGRAM:")
 
     for full_match, description in image_blocks:
-        image_url = get_pexels_image(description, primary_keyword)
+        position = blog_text.find(full_match)
+        section_context = get_nearest_heading(blog_text, position) if position != -1 else ""
+        image_url = get_pexels_image(description, primary_keyword, section_context)
         clean_caption = re.sub(r"[\[\]]", "", description).strip()
         markdown_image = f"\n\n![{clean_caption}]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
@@ -328,7 +409,12 @@ def clean_keyword_artifacts(text, keyword):
     for i, link in enumerate(protected_links):
         text = text.replace(f"\x00LINK{i}\x00", link)
 
-    # Remove dangling closing asterisks directly attached to markdown links: [Label](url)**
+    # Remove dangling asterisks directly attached to markdown links: **[Label](url) or [Label](url)**
+    text = re.sub(
+        r'\*{1,3}(\[[^\]]+\]\([^\)]+\))',
+        r'\1',
+        text
+    )
     text = re.sub(
         r'(\[[^\]]+\]\([^\)]+\))\*{1,3}',
         r'\1',
@@ -460,8 +546,11 @@ def fix_keyword_typos(text, keyword):
         window_text = " ".join(w[0] for w in window)
         window_clean = re.sub(r"[^\w\s]", "", window_text).lower()
 
+        # High threshold: only fix genuine near-typos (e.g. one misspelled word), not
+        # loosely-similar phrasing with a different grammatical structure - a lower
+        # threshold here was swallowing verbs/subjects and breaking sentences.
         similarity = difflib.SequenceMatcher(None, window_clean, target_clean).ratio()
-        if 0.75 <= similarity < 1.0:
+        if 0.92 <= similarity < 1.0:
             start = window[0][1] + offset
             end = window[-1][2] + offset
             fixed_text = fixed_text[:start] + keyword + fixed_text[end:]
@@ -959,6 +1048,17 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
         )
         secondary_context = f"\nSECONDARY KEYWORD RULES:\n{secondary_lines}\nDo not force secondary keywords into headings or metadata.\n"
 
+    primary_keyword_context = f"""
+PRIMARY KEYWORD USAGE RULES:
+- Treat "{chosen_keyword}" as a descriptive phrase, not a proper product name. Never write
+  constructions that imply it is a title, such as "X Is the {chosen_keyword}".
+- Every time "{chosen_keyword}" appears, the surrounding sentence or heading must remain
+  grammatically complete and make sense on its own (correct subject, verb, and articles like "a"/"the").
+- Vary the surrounding phrasing between occurrences (e.g. "a {chosen_keyword}", "the right
+  {chosen_keyword}", "this {chosen_keyword}") instead of repeating the identical sentence pattern,
+  while keeping the required keyword density.
+"""
+
     return f"""You are a Senior SEO Content Writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform[cite: 1].
 
 CURRENT YEAR: 2026.
@@ -974,6 +1074,7 @@ WRITING TONE:
 EDITORIAL DIRECTION:
 {questions_context}
 {secondary_context}
+{primary_keyword_context}
 
 The article MUST be at least {MIN_WORD_COUNT} words in the body content.
 
@@ -999,6 +1100,9 @@ Follow: {title_instruction}
 MEDIA RULES:
 - Include 3-5 relevant image markers: [IMAGE: retail pharmacist checking inventory stock at counter]
 - Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Received Order] --> B[Barcode POS Scan] --> C[Inventory Auto-Deduct]]
+- Spread these markers out, one per major ## section, immediately after that section's first
+  paragraph. Never place two or more markers back-to-back, and never stack them all at the end
+  of the article.
 
 Output only the finished article content."""
 
@@ -1408,6 +1512,7 @@ def api_generate(keyword):
         body = weave_natural_links(body, keyword, internal_link)
         body = clean_keyword_artifacts(body, keyword)
 
+        body = distribute_media_markers(body)
         body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword)
         body = ensure_h1_title(body, chosen_title)
         body = enforce_keyword_density(body, keyword)
