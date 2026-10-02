@@ -308,12 +308,25 @@ def clean_keyword_artifacts(text, keyword):
     Eliminates dangling markdown artifacts, orphan asterisks, and broken link fragments
     like 'in Keyword features](url)**' without altering body prose.
     """
+    # Protect already well-formed links so the broken-link fix below can't re-match
+    # inside them (that mismatch was corrupting text into "[S[a[daHisab...").
+    protected_links = []
+
+    def _stash_link(match):
+        protected_links.append(match.group(0))
+        return f"\x00LINK{len(protected_links) - 1}\x00"
+
+    text = re.sub(r'\[[^\]]+\]\([^\)]+\)', _stash_link, text)
+
     # Fix broken links where opening bracket was omitted
     text = re.sub(
         r'(?<!\[)([A-Za-z0-9\s—|-]+features\]\([^\)]+\))',
         r'[\1',
         text
     )
+
+    for i, link in enumerate(protected_links):
+        text = text.replace(f"\x00LINK{i}\x00", link)
 
     # Remove dangling closing asterisks directly attached to markdown links: [Label](url)**
     text = re.sub(
