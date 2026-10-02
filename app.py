@@ -404,6 +404,25 @@ AUTHORITY_EXTERNAL_LINKS = {
     "BRA": ("https://bra.gob.pk/", "Balochistan Revenue Authority (BRA)"),
 }
 
+# Jurisdiction/role cheat-sheet so the AI never mixes up which authority
+# governs which province/cities when a keyword mentions an abbreviation.
+TAX_AUTHORITY_CONTEXT = """
+PAKISTANI TAX AUTHORITY REFERENCE (use the correct one for each province/city - never mix these up):
+- FBR (Federal Board of Revenue): FEDERAL authority covering ALL of Pakistan. Handles income tax,
+  federal sales tax on GOODS, customs, and digital/e-invoicing rules nationwide. Applies everywhere
+  (Punjab, Sindh, KP, Balochistan, Islamabad) regardless of city.
+- PRA (Punjab Revenue Authority): Provincial authority for PUNJAB ONLY. Handles sales tax on SERVICES
+  in Punjab. Cities: Lahore, Rawalpindi, Faisalabad, Multan, Gujranwala, Sialkot, Sargodha.
+- SRB (Sindh Revenue Board): Provincial authority for SINDH ONLY. Handles sales tax on SERVICES in
+  Sindh. Cities: Karachi, Hyderabad, Sukkur, Larkana, Mirpurkhas.
+- KPRA (Khyber Pakhtunkhwa Revenue Authority): Provincial authority for KHYBER PAKHTUNKHWA ONLY.
+  Handles sales tax on SERVICES in KP. Cities: Peshawar, Abbottabad, Mardan, Swat, Kohat.
+- BRA (Balochistan Revenue Authority): Provincial authority for BALOCHISTAN ONLY. Handles sales tax
+  on SERVICES in Balochistan. Cities: Quetta, Gwadar, Turbat, Khuzdar.
+Never attribute a province's cities or services-tax authority to the wrong province (e.g. never
+mention SRB for a Punjab city, or PRA for a Sindh city). FBR applies nationwide regardless of city.
+"""
+
 
 def get_external_links_for_keyword(keyword):
     matched = []
@@ -855,7 +874,7 @@ CURRENT YEAR: 2026.
 
 MANDATORY PRIMARY KEYWORDS (MUST APPEAR NATURALLY IN EVERY TITLE):
 {keyword_list}
-
+{TAX_AUTHORITY_CONTEXT}
 ==================================================
 HEADLINE CRITERIA (PERSUASIVE, COMMERCIAL & INFORMATIONAL):
 ==================================================
@@ -1117,7 +1136,7 @@ EDITORIAL DIRECTION:
 {questions_context}
 {secondary_context}
 {primary_keyword_context}
-
+{TAX_AUTHORITY_CONTEXT}
 The article MUST be at least {MIN_WORD_COUNT} words in the body content.
 
 ==================================================
@@ -1165,6 +1184,37 @@ def home():
     files = sorted(local_files | repo_files)
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
+
+
+@app.route("/api/blog/<filename>")
+def api_get_blog(filename):
+    safe_filename = os.path.basename(filename)
+    if safe_filename != filename:
+        abort(404)
+
+    runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
+    bundled_filepath = os.path.join(BUNDLED_BLOGS_FOLDER, safe_filename)
+
+    raw_text = None
+    if os.path.exists(runtime_filepath):
+        with open(runtime_filepath, "r", encoding="utf-8") as f:
+            raw_text = f.read()
+    elif os.path.isfile(bundled_filepath):
+        with open(bundled_filepath, "r", encoding="utf-8") as f:
+            raw_text = f.read()
+    else:
+        raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+
+    if raw_text is None:
+        return jsonify({"error": "Article not found."}), 404
+
+    meta = next((entry for entry in _load_manifest() if entry.get("filename") == safe_filename), {})
+    return jsonify({
+        "filename": safe_filename,
+        "content": raw_text,
+        "keyword": meta.get("keyword") or safe_filename.replace("_", " ").replace(".md", ""),
+        "word_count": meta.get("wordCount") or len(raw_text.split()),
+    })
 
 
 @app.route("/blog/<filename>")
