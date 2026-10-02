@@ -1201,20 +1201,6 @@ function renderStudioQuickPicks(){
   const wrap=document.getElementById('studio-quick-trends');
   if(!wrap)return;
   wrap.innerHTML='';
-  const picks=["Bakery","Pharmacy","Restaurant","FBR Invoicing","Grocery Store"];
-  picks.forEach(term=>{
-    const btn=document.createElement('button');
-    btn.className='kw-chip';
-    btn.textContent=term;
-    btn.onclick=()=>{
-      wrap.querySelectorAll('.kw-chip').forEach(c=>c.classList.remove('selected'));
-      btn.classList.add('selected');
-      const kw=document.getElementById('target-keyword');
-      if(kw)kw.value=term+' POS software';
-    };
-    wrap.appendChild(btn);
-  });
-  appendSeeAllLink(wrap);
 }
 
 function renderStudioTrendingChips(terms){
