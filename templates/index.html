@@ -1201,7 +1201,20 @@ function renderStudioQuickPicks(){
   const wrap=document.getElementById('studio-quick-trends');
   if(!wrap)return;
   wrap.innerHTML='';
-  /* Placeholder picks removed - only show trending after user searches */
+  const picks=["Bakery","Pharmacy","Restaurant","FBR Invoicing","Grocery Store"];
+  picks.forEach(term=>{
+    const btn=document.createElement('button');
+    btn.className='kw-chip';
+    btn.textContent=term;
+    btn.onclick=()=>{
+      wrap.querySelectorAll('.kw-chip').forEach(c=>c.classList.remove('selected'));
+      btn.classList.add('selected');
+      const kw=document.getElementById('target-keyword');
+      if(kw)kw.value=term+' POS software';
+    };
+    wrap.appendChild(btn);
+  });
+  appendSeeAllLink(wrap);
 }
 
 function renderStudioTrendingChips(terms){
@@ -1235,16 +1248,11 @@ function scheduleStudioTrendingUpdate(){
 }
 async function updateStudioTrendingChips(){
   const kw=document.getElementById('target-keyword')?.value.trim()||'';
-  if(!kw){
-    const wrap=document.getElementById('studio-quick-trends');
-    if(wrap)wrap.innerHTML='';
-    return;
-  }
+  if(!kw){renderStudioQuickPicks();return;}
 
   const requestId=++studioTrendingRequestId;
   try{
-    /* Fetch trending data from all timeframes: 7d, 1m, 12m */
-    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe=all');
+    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe=1m');
     const data=await res.json();
     if(requestId!==studioTrendingRequestId)return; // superseded by a newer keystroke
 
