@@ -131,11 +131,10 @@ def generate_title_text(prompt, max_tokens):
 
 
 # ============================================================================
-# PEXELS & VISUAL ASSETS FIX
+# PEXELS & IMAGE SANITIZATION
 # ============================================================================
 
 def clean_image_search_query(raw_query, primary_keyword=""):
-    """Extract 2-4 clean, searchable nouns so Pexels never returns 0 results."""
     clean = re.sub(
         r"(?i)\b(image|photo|photograph|illustration|picture|depicting|showing|a\s+view\s+of|conceptual|shot\s+of|realistic|vector|graphic)\b",
         "",
@@ -143,7 +142,7 @@ def clean_image_search_query(raw_query, primary_keyword=""):
     )
     clean = re.sub(r"[^\w\s]", " ", clean).strip()
     words = [w for w in clean.split() if len(w) > 2]
-    
+
     if len(words) >= 2:
         return " ".join(words[:3])
 
@@ -151,9 +150,9 @@ def clean_image_search_query(raw_query, primary_keyword=""):
         kw_clean = re.sub(r"(?i)\b(software|system|management|in\s+pakistan)\b", "", primary_keyword)
         kw_words = [w for w in re.sub(r"[^\w\s]", " ", kw_clean).split() if len(w) > 2]
         if kw_words:
-            return f"{kw_words[0]} store counter"
+            return f"{kw_words[0]} pharmacy retail counter"
 
-    return "retail counter cashier"
+    return "pharmacy medicine store counter"
 
 
 def get_pexels_image(query, primary_keyword=""):
@@ -179,10 +178,10 @@ def get_pexels_image(query, primary_keyword=""):
     except Exception as e:
         app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
 
-    # Broad single-word fallback query
+    # Broad single-word fallback
     try:
-        broad_word = primary_keyword.split()[0] if primary_keyword else "retail"
-        fallback_params = {"query": f"{broad_word} business", "per_page": 1, "orientation": "landscape"}
+        broad_word = primary_keyword.split()[0] if primary_keyword else "pharmacy"
+        fallback_params = {"query": f"{broad_word} store", "per_page": 1, "orientation": "landscape"}
         fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
         if fallback_res.status_code == 200:
             data = fallback_res.json()
@@ -300,11 +299,70 @@ def get_external_links_for_keyword(keyword):
     return matched
 
 
+# ============================================================================
+# NATURAL LINKING & ARTIFACT CLEANING
+# ============================================================================
+
+def clean_keyword_artifacts(text, keyword):
+    """
+    Eliminates dangling markdown artifacts, orphan asterisks, and broken link fragments
+    like 'in Keyword features](url)**' without altering body prose.
+    """
+    # Fix broken links where opening bracket was omitted
+    text = re.sub(
+        r'(?<!\[)([A-Za-z0-9\s—|-]+features\]\([^\)]+\))',
+        r'[\1',
+        text
+    )
+
+    # Remove dangling closing asterisks directly attached to markdown links: [Label](url)**
+    text = re.sub(
+        r'(\[[^\]]+\]\([^\)]+\))\*{1,3}',
+        r'\1',
+        text
+    )
+
+    # Clean orphaned bold asterisks attached directly to keyword boundaries: Keyword** or **Keyword
+    escaped_kw = re.escape(keyword)
+    text = re.sub(rf'\b{escaped_kw}\s*\*\*', keyword, text, flags=re.IGNORECASE)
+    text = re.sub(rf'\*\*\s*{escaped_kw}\b', keyword, text, flags=re.IGNORECASE)
+
+    # Remove duplicated location noise
+    duplicated_location = re.compile(
+        rf"(?:\*\*)?{escaped_kw}(?:\s+in\s+Pakistan)+(?:\*\*)?",
+        re.IGNORECASE,
+    )
+    text = duplicated_location.sub(keyword, text)
+
+    # Un-bold exact keyword in body text to maintain natural look
+    text = re.sub(rf"\*{{2}}\s*{escaped_kw}\s*\*{{2}}", keyword, text, flags=re.IGNORECASE)
+
+    # Fix sentences that lose their main verb due to model substitution
+    text = re.sub(
+        rf"(A dedicated\s+{escaped_kw})\s+(the visibility,\s+control)",
+        r"\1 delivers \2",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        rf"(generic POS solution can record a sale, but\s+{escaped_kw})\s+adds",
+        r"\1 solution adds",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return text
+
+
 def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, min_external=2):
+    """
+    Seamlessly inserts missing contextual internal and external links directly into natural
+    sentence structures without creating robotic, detached bulleted lists.
+    """
     existing_links = [url for _, url in count_markdown_links(body)]
     paragraphs = body.split("\n\n")
 
-    def is_prose(p):
+    def is_valid_prose(p):
         stripped = p.strip()
         if len(stripped.split()) < 15 or len(stripped.split()) > 140:
             return False
@@ -312,36 +370,34 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
             return False
         return True
 
-    eligible_indices = [i for i, p in enumerate(paragraphs) if is_prose(p)]
+    eligible_indices = [i for i, p in enumerate(paragraphs) if is_valid_prose(p)]
     if not eligible_indices:
         return body
 
     current_internal_count = sum(1 for url in existing_links if "example.com" in url)
     current_external_count = len(existing_links) - current_internal_count
 
+    # 1. Primary ExampleBrand feature & pricing link
     if current_internal_count < min_internal and primary_internal_link not in existing_links:
         for idx in eligible_indices:
             p = paragraphs[idx]
             if "ExampleBrand" in p.lower() and "[" not in p:
-                paragraphs[idx] = re.sub(
-                    r"(?i)\b(ExampleBrand)\b",
-                    f"[ExampleBrand POS platform]({primary_internal_link})",
-                    p,
-                    count=1,
-                )
+                paragraphs[idx] = p.rstrip() + f" You can explore the complete operational capabilities on the [ExampleBrand pricing and features]({primary_internal_link}) page."
                 existing_links.append(primary_internal_link)
                 current_internal_count += 1
                 break
 
+    # 2. Demo booking link
     if current_internal_count < min_internal and CONTACT_URL not in existing_links:
         for idx in reversed(eligible_indices):
             p = paragraphs[idx]
-            if "[" not in p and any(w in p.lower() for w in ["business", "system", "setup", "manage"]):
-                paragraphs[idx] = p.rstrip() + f" Business managers can also [book a free ExampleBrand demo]({CONTACT_URL}) to test these workflows firsthand."
+            if "[" not in p and any(w in p.lower() for w in ["business", "system", "setup", "manage", "store", "pharmacy"]):
+                paragraphs[idx] = p.rstrip() + f" Pharmacy managers can also [book a free ExampleBrand demo]({CONTACT_URL}) to evaluate the register firsthand."
                 existing_links.append(CONTACT_URL)
                 current_internal_count += 1
                 break
 
+    # 3. Supplemental internal catalog links
     if current_internal_count < min_internal:
         extra_pool = get_extra_internal_link_pool(keyword, limit=4)
         for url in extra_pool:
@@ -358,6 +414,7 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
                     current_internal_count += 1
                     break
 
+    # 4. External regulatory authority links
     if current_external_count < min_external:
         ext_targets = get_external_links_for_keyword(keyword)
         for url, label in ext_targets:
@@ -367,8 +424,8 @@ def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, mi
                 continue
             for idx in eligible_indices:
                 p = paragraphs[idx]
-                if "[" not in p and any(w in p.lower() for w in ["tax", "invoice", "compliance", "law", "record", "system"]):
-                    paragraphs[idx] = p.rstrip() + f" You can cross-check official documentation directly on the [{label}]({url})."
+                if "[" not in p and any(w in p.lower() for w in ["tax", "invoice", "compliance", "law", "fbr", "pos"]):
+                    paragraphs[idx] = p.rstrip() + f" Statutory compliance requirements can be reviewed on the [{label}]({url})."
                     existing_links.append(url)
                     current_external_count += 1
                     break
@@ -407,41 +464,24 @@ def collapse_duplicate_words(text):
     return re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", text, flags=re.IGNORECASE)
 
 
-def clean_keyword_artifacts(text, keyword):
-    escaped_keyword = re.escape(keyword)
-    duplicated_location = re.compile(
-        rf"(?:\*\*)?{escaped_keyword}(?:\s+in\s+Pakistan)+(?:\*\*)?",
-        re.IGNORECASE,
-    )
-    text = duplicated_location.sub(keyword, text)
-
-    bold_keyword = re.compile(
-        rf"\*{{2}}\s*{escaped_keyword}\s*\*{{2}}",
-        re.IGNORECASE,
-    )
-    text = bold_keyword.sub(keyword, text)
-    text = re.sub(rf"\*{{2}}\s*{escaped_keyword}", keyword, text, flags=re.IGNORECASE)
-    return text
-
-
 def enforce_keyword_density(body, keyword, target_per_1000=8.0):
     current_density = keyword_density(body, keyword)
     if current_density >= target_per_1000:
         return body
 
     reference_sentences = [
-        f"For a retail store managing high customer volume, {keyword} is most useful when it keeps product, order, and billing records aligned without lag.",
-        f"When assessing {keyword}, shop owners should verify how smoothly it processes daily cash, credit, and digital transactions.",
-        f"In everyday operations, the practical value of {keyword} depends on whether counter staff can navigate it easily during rush hours.",
-        f"A reliable {keyword} should automate manual calculations without making tax reporting or receipt printing complicated.",
-        f"Businesses upgrading their setup get measurable speed improvements once {keyword} is integrated across counters.",
+        f"For a fast-paced retail business, deploying a {keyword} ensures product catalog, stock counts, and sales receipts stay accurate.",
+        f"When choosing a {keyword}, store owners should verify how effectively it monitors expiration windows, returns, and daily totals.",
+        f"In real-world retail workflows, the practical value of a {keyword} lies in keeping the checkout counter running without calculation errors.",
+        f"A purpose-built {keyword} automates routine batch management while keeping fiscal documentation transparent and organized.",
+        f"Retail pharmacies adopting a {keyword} typically see immediate efficiency gains across sales counters and backroom shelves.",
     ]
 
     paragraphs = body.split("\n\n")
     keyword_terms = {term.casefold() for term in re.findall(r"[A-Za-z]{3,}", keyword)}
     topic_terms = keyword_terms | {
         "pos", "sales", "retail", "store", "shop", "inventory", "stock",
-        "billing", "invoice", "counter", "payment", "tax", "reporting",
+        "billing", "invoice", "counter", "payment", "tax", "reporting", "pharmacy"
     }
 
     def suitable_prose(paragraph):
@@ -514,7 +554,7 @@ def enforce_secondary_keywords(body, secondary_keywords):
             words = paragraph.split()
             if len(words) < 15 or paragraph.lstrip().startswith(("#", "![", "- ", "* ", "> ", "|")):
                 continue
-            sentence = f"This system also ensures {keyword} is tracked clearly without manual errors."
+            sentence = f"This integration also makes {keyword} straightforward to evaluate during regular counter audits."
             paragraphs[index] = paragraph.rstrip() + " " + sentence
             needed -= 1
 
@@ -524,7 +564,7 @@ def enforce_secondary_keywords(body, secondary_keywords):
 
 
 # ============================================================================
-# PERSUASIVE & BALANCED TITLE GENERATION (COMMERCIAL + INFORMATIONAL)
+# PERSUASIVE & BALANCED TITLE GENERATION
 # ============================================================================
 
 def parse_primary_keywords(raw_keyword):
@@ -553,7 +593,7 @@ def title_contains_phrase(title, phrase):
     return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
 
 
-def limit_words(text, max_words=10):
+def limit_words(text, max_words=12):
     words = re.findall(r"\S+", (text or "").strip())
     if len(words) <= max_words:
         return text.strip()
@@ -568,7 +608,7 @@ def ensure_title_has_keywords(title, primary_keywords):
     if missing:
         suffix = " | ".join(missing)
         fixed = f"{fixed} | {suffix}"
-    return limit_words(fixed, max_words=10)
+    return limit_words(fixed, max_words=12)
 
 
 def title_has_power_word(title):
@@ -581,7 +621,7 @@ def remove_power_words(text):
     for word in POWER_WORDS:
         cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" |:-.,")
-    return limit_words(cleaned, max_words=10)
+    return limit_words(cleaned, max_words=12)
 
 
 def find_phrase_start(text, phrase):
@@ -601,15 +641,15 @@ def add_power_word(title, primary_keywords, word):
             after = title[idx:]
             glue = f"{before} " if before else ""
             res = re.sub(r"\s+", " ", f"{glue}{word} {after}").strip()
-            return limit_words(res, max_words=10)
+            return limit_words(res, max_words=12)
     res = re.sub(r"\s+", " ", f"{word} {title}").strip()
-    return limit_words(res, max_words=10)
+    return limit_words(res, max_words=12)
 
 
 def normalize_meta_description(meta, primary_keywords):
     cleaned = re.sub(r"\s+", " ", (meta or "").strip())
     if not cleaned:
-        cleaned = f"Compare features, pricing, and key integrations for {primary_keywords[0]} in Pakistan. Simple guide for business owners."
+        cleaned = f"Compare features, pricing, and key integrations for {primary_keywords[0]} in Pakistan. Practical guide for store owners."
     if len(cleaned) > 160:
         cleaned = cleaned[:157].rsplit(" ", 1)[0] + "..."
     return cleaned
@@ -662,7 +702,7 @@ def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
         else f"""Do not include any power or hype words in any of the six titles (avoid: {power_word_catalog})."""
     )
 
-    return f"""You are a High-Converting B2B & Retail Headline Specialist for ExampleBrand in Pakistan[cite: 1, 51].
+    return f"""You are a High-Converting B2B & Retail Headline Specialist for ExampleBrand in Pakistan[cite: 1].
 
 PRIMARY SEARCH QUERY:
 "{chosen_keyword}"
@@ -678,39 +718,38 @@ HEADLINE CRITERIA (PERSUASIVE, COMMERCIAL & INFORMATIONAL):
 Generate exactly 6 distinct, eye-catching, and highly persuasive titles.
 
 1. INTENT SPLIT (3 COMMERCIAL + 3 INFORMATIONAL):
-   - Titles 1-3 MUST be COMMERCIAL / BUYER-FOCUSED (focus on choosing, comparisons, pricing, reviews, top systems):
+   - Titles 1-3 MUST be COMMERCIAL / BUYER-FOCUSED (choosing, comparisons, pricing, reviews, top systems):
      Examples:
      * "Best POS System in Pakistan 2026 | Top 7 Compared"
      * "Free POS Software. Point of Sale System. Loyverse POS"
      * "Top POS Software in Lahore | Pricing & Features"
-   - Titles 4-6 MUST be INFORMATIONAL / PROBLEM-SOLVING (focus on how-to, setup, avoiding errors, tax integration, daily workflows):
+   - Titles 4-6 MUST be INFORMATIONAL / PROBLEM-SOLVING (how-to, setup, avoiding errors, tax integration, daily workflows):
      Examples:
      * "FBR Digital Invoicing System | Upload, Validate & Report"
      * "How to Setup Pharmacy POS Software | Practical Guide"
      * "Common Retail Billing Mistakes and How to Avoid Them"
 
-2. STRICT LENGTH: Under 10 words per title (concise, punchy)[cite: 51].
-3. FORMAT: Use separators like '|', '.', or '—' to make headlines look modern and easy to scan.
-4. LANGUAGE: Plain, simple English that shop owners and retail managers in Pakistan understand instantly[cite: 51].
+2. STRICT LENGTH: Under 12 words per title (concise, punchy).
+3. FORMAT: Use separators like '|', '.', or '—' to make headlines scannable.
+4. LANGUAGE: Simple, clear English understood immediately by retail managers in Pakistan.
 5. {power_rule}
-6. META DESCRIPTION: Write an authentic, persuasive meta description (120 to 155 characters) for each title highlighting real benefits for Pakistani retailers[cite: 51].
+6. META DESCRIPTION: Write a natural meta description (120 to 155 characters) for each title highlighting business benefits.
 
 ==================================================
 OUTPUT FORMAT
 ==================================================
-Output exactly 6 numbered lines. No introductory text, no bullet points[cite: 51]:
-1. Title (max 10 words) || Meta description
-2. Title (max 10 words) || Meta description
-3. Title (max 10 words) || Meta description
-4. Title (max 10 words) || Meta description
-5. Title (max 10 words) || Meta description
-6. Title (max 10 words) || Meta description"""
+Output exactly 6 numbered lines. No introductory chatter or bullet formatting:
+1. Title || Meta description
+2. Title || Meta description
+3. Title || Meta description
+4. Title || Meta description
+5. Title || Meta description
+6. Title || Meta description"""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
     joined = " | ".join(primary_keywords)
     options = [
-        # Commercial / Buyer Intent
         {
             "title": f"Best {joined} in Pakistan | Top Reviewed",
             "meta_description": f"Compare top features, pricing, and integrations for {primary_keywords[0]} in Pakistan. Find the perfect system for your counter."
@@ -723,7 +762,6 @@ def get_fallback_title_options(primary_keywords, include_power_words):
             "title": f"Top {joined} for Retail Stores Compared",
             "meta_description": f"See how {primary_keywords[0]} compares against traditional khata. Choose the easiest system for your cash counter."
         },
-        # Informational / Operational Intent
         {
             "title": f"{joined} | Setup, Invoicing and Reports",
             "meta_description": f"Complete guide to managing {primary_keywords[0]}. Discover step-by-step setup, digital invoicing, and inventory control."
@@ -763,7 +801,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
             title = left.strip()
             meta_description = right.strip()
 
-        title = limit_words(title, max_words=10)
+        title = limit_words(title, max_words=12)
 
         if len(title.split()) < 3 or not re.search(r"[A-Za-z]", title):
             continue
@@ -805,7 +843,7 @@ def extract_ai_title_candidates(raw_text):
         if "||" in cleaned:
             cleaned = cleaned.split("||")[0].strip()
 
-        cleaned = limit_words(cleaned, max_words=10)
+        cleaned = limit_words(cleaned, max_words=12)
 
         if len(cleaned.split()) < 3 or not re.search(r"[A-Za-z]", cleaned):
             continue
@@ -890,13 +928,13 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
     else:
         title_instruction = f'H1 title naming "{chosen_keyword}"'
 
-    purpose_context = blog_purpose.strip() or "Create a practical, useful guide that satisfies the search intent behind the keyword."
-    questions_context = audience_questions.strip() or "Address everyday retail, inventory, and point-of-sale challenges."
+    purpose_context = blog_purpose.strip() or "Create a practical, comprehensive guide for store managers and retail pharmacy owners."
+    questions_context = audience_questions.strip() or "Address inventory leakage, stockout avoidance, batch expiry tracking, and billing operations."
 
     tone_instructions = {
-        "professional": "Use a professional, authoritative, and direct tone. Open directly with the real business problem or decision.",
-        "conversational": "Use a conversational and approachable tone while staying accurate and useful.",
-        "informal": "Use a relaxed, friendly tone with simple language and relatable examples.",
+        "professional": "Use a professional, authoritative, and direct tone. Open directly with the operational problem.",
+        "conversational": "Use a conversational and approachable tone while maintaining technical rigor.",
+        "informal": "Use a relaxed, friendly tone with simple language and relatable retail examples.",
     }
     tone_context = tone_instructions.get(blog_tone, tone_instructions["professional"])
     secondary_keywords = secondary_keywords or []
@@ -906,13 +944,13 @@ def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_qu
             f'- Use the secondary keyword "{item["keyword"]}" exactly {item["count"]} time(s) in natural, relevant body prose.'
             for item in secondary_keywords
         )
-        secondary_context = f"\nSECONDARY KEYWORD RULES:\n{secondary_lines}\nDo not put secondary keywords in headings or metadata.\n"
+        secondary_context = f"\nSECONDARY KEYWORD RULES:\n{secondary_lines}\nDo not force secondary keywords into headings or metadata.\n"
 
-    return f"""You are a Senior SEO Content Writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform[cite: 1, 51].
+    return f"""You are a Senior SEO Content Writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform[cite: 1].
 
 CURRENT YEAR: 2026.
 
-Write ONE complete, publish-ready blog article about "{chosen_keyword}"[cite: 51].
+Write ONE complete, publish-ready blog article about "{chosen_keyword}".
 
 BLOG PURPOSE:
 {purpose_context}
@@ -924,17 +962,17 @@ EDITORIAL DIRECTION:
 {questions_context}
 {secondary_context}
 
-The article MUST be at least {MIN_WORD_COUNT} words in the body content[cite: 51].
+The article MUST be at least {MIN_WORD_COUNT} words in the body content.
 
 ==================================================
-NATURAL IN-PROSE LINKING:
+CRITICAL NATURAL LINKING INSTRUCTIONS:
 ==================================================
-Weave links naturally into flowing sentences across relevant paragraphs. Never create a separate bulleted list of raw URLs:
-- Feature link: [{chosen_keyword} features]({internal_link})
-- Demo link: [Book a free ExampleBrand demo]({CONTACT_URL})
+Never create a disconnected "Related Resources" or "Links" list. Weave hyperlinks directly into natural body sentences:
+- Pricing & Features: [ExampleBrand pricing and features]({internal_link})
+- Demo Booking: [book a free ExampleBrand demo]({CONTACT_URL})
 - Other internal resources:
 {extra_links_text}
-- External official authorities:
+- External official references:
 {ext_links_text}
 
 FORMAT REQUIREMENTS:
@@ -946,10 +984,10 @@ Then a blank line, followed by:
 Follow: {title_instruction}
 
 MEDIA RULES:
-- Include 3-5 relevant image markers spread across the body: [IMAGE: shop cashier billing customer at counter]
-- Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Customer Order] --> B[POS Terminal] --> C[Digital Invoice]]
+- Include 3-5 relevant image markers: [IMAGE: retail pharmacist checking inventory stock at counter]
+- Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Received Order] --> B[Barcode POS Scan] --> C[Inventory Auto-Deduct]]
 
-Output only the finished article content - no extra conversational meta-commentary[cite: 51]."""
+Output only the finished article content."""
 
 
 @app.route("/")
@@ -1348,17 +1386,17 @@ def api_generate(keyword):
         body = re.sub(r"META_TITLE:.*\n?", "", raw_text)
         body = re.sub(r"META_DESCRIPTION:.*\n?", "", body).strip()
 
+        # Structural, typographical, and natural linking passes
         body = ensure_h1_title(body, chosen_title)
         body = fix_keyword_typos(body, keyword)
         body = collapse_duplicate_words(body)
-        body = clean_keyword_artifacts(body, keyword)
 
         internal_link = keyword_links.get(keyword, "https://example.com/pricing-plan/")
         body = weave_natural_links(body, keyword, internal_link)
+        body = clean_keyword_artifacts(body, keyword)
 
         body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword)
         body = ensure_h1_title(body, chosen_title)
-        body = clean_keyword_artifacts(body, keyword)
         body = enforce_keyword_density(body, keyword)
         body = enforce_secondary_keywords(body, secondary_keywords)
         body = clean_keyword_artifacts(body, keyword)
