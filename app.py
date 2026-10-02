@@ -37,6 +37,14 @@ DRAFTS_REPO_DIR = "drafts"
 MANIFEST_PATH = f"{DRAFTS_REPO_DIR}/manifest.json"
 
 
+def _safe_listdir(path):
+    """os.listdir that tolerates a folder being absent (e.g. deleted from the repo)."""
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
 def _load_manifest():
     content, _ = github_store.get_file(MANIFEST_PATH)
     if not content:
@@ -1152,7 +1160,7 @@ Output only the finished article content."""
 
 @app.route("/")
 def home():
-    local_files = set(os.listdir(BUNDLED_BLOGS_FOLDER) + os.listdir(BLOGS_FOLDER))
+    local_files = set(_safe_listdir(BUNDLED_BLOGS_FOLDER) + _safe_listdir(BLOGS_FOLDER))
     repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
     files = sorted(local_files | repo_files)
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
