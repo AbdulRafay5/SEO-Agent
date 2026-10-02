@@ -674,7 +674,7 @@ MANDATORY PRIMARY KEYWORDS (ALL MUST BE NATURALLY PRESENT IN EVERY TITLE):
 ==================================================
 CRITICAL TITLE STYLE & LENGTH RULES:
 ==================================================
-1. MAXIMUM 14 WORDS PER TITLE: Each title MUST be short, clean, and strictly under 14 words[cite: 51].
+1. MAXIMUM 10 WORDS PER TITLE: Each title MUST be short, clean, and strictly under 10 words[cite: 51].
 2. SIMPLICITY: Use plain, simple English that shopkeepers and retail owners in Pakistan understand immediately[cite: 51].
 3. FORMAT: Short, punchy titles separated by '|' or clean dots.
    Example formats:
@@ -690,12 +690,12 @@ CRITICAL TITLE STYLE & LENGTH RULES:
 OUTPUT FORMAT
 ==================================================
 Output exactly 6 lines. No extra markdown, no introductory fluff[cite: 51]:
-1. Title (max 14 words) || Meta description
-2. Title (max 14 words) || Meta description
-3. Title (max 14 words) || Meta description
-4. Title (max 14 words) || Meta description
-5. Title (max 14 words) || Meta description
-6. Title (max 14 words) || Meta description"""
+1. Title (max 10 words) || Meta description
+2. Title (max 10 words) || Meta description
+3. Title (max 10 words) || Meta description
+4. Title (max 10 words) || Meta description
+5. Title (max 10 words) || Meta description
+6. Title (max 10 words) || Meta description"""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
@@ -1184,61 +1184,14 @@ def api_trends():
         return jsonify({"error": "Please enter a search term."}), 400
 
     timeframe_options = {
-        "7d": "7-d",
+        "7d": "now 7-d",
         "1m": "today 1-m",
         "12m": "today 12-m",
     }
     timeframe_key = request.args.get("timeframe", "1m")
-    
-    # Handle "all" timeframe by combining data from all timeframes
-    if timeframe_key == "all":
-        try:
-            combined_data = {"top_queries": [], "rising_queries": []}
-            seen_queries = set()
-            
-            for tf_key, tf_value in timeframe_options.items():
-                data = fetch_trends_data(searched_keyword, tf_value)
-                
-                # Collect top queries
-                for query_item in (data.get("top_queries") or []):
-                    query_text = (query_item.get("query") or "").strip().lower()
-                    if query_text and query_text not in seen_queries:
-                        seen_queries.add(query_text)
-                        combined_data["top_queries"].append(query_item)
-                
-                # Collect rising queries
-                for query_item in (data.get("rising_queries") or []):
-                    query_text = (query_item.get("query") or "").strip().lower()
-                    if query_text and query_text not in seen_queries:
-                        seen_queries.add(query_text)
-                        combined_data["rising_queries"].append(query_item)
-            
-            return jsonify({
-                "source": "live",
-                "searched_keyword": searched_keyword,
-                "timeframe": "all",
-                "interest_over_time": [],
-                "region_data": [],
-                "chart_labels": [],
-                "chart_values": [],
-                "region_scope": "",
-                "top_queries": combined_data["top_queries"][:10],
-                "rising_queries": combined_data["rising_queries"][:10],
-            })
-        except Exception as error:
-            app.logger.warning("Google Trends request failed for %r: %s", searched_keyword, error)
-            fallback = get_fallback_trend_data()
-            fallback["searched_keyword"] = searched_keyword
-            fallback["source"] = "rate-limited" if "429" in str(error) else "unavailable"
-            response = jsonify(fallback)
-            if fallback["source"] == "rate-limited":
-                response.status_code = 429
-                response.headers["Retry-After"] = str(_TRENDS_RATE_LIMIT_TTL_SECONDS)
-            return response
-    
     timeframe = timeframe_options.get(timeframe_key)
     if timeframe is None:
-        return jsonify({"error": "Invalid timeframe. Use 7d, 1m, 12m, or all."}), 400
+        return jsonify({"error": "Invalid timeframe. Use 7d, 1m, or 12m."}), 400
 
     try:
         data = fetch_trends_data(searched_keyword, timeframe)
@@ -1375,11 +1328,11 @@ def api_generate(keyword):
                 )
             if preview_density < 8.0:
                 feedback.append(
-                    f"Add relevant references to {keyword} until natural rate is 8-14 per 1,000 words."
+                    f"Add relevant references to {keyword} until natural rate is 8-10 per 1,000 words."
                 )
             elif preview_density > 10.0:
                 feedback.append(
-                    f"Replace unnecessary repetitions with natural synonyms until rate is 8-14 per 1,000 words."
+                    f"Replace unnecessary repetitions with natural synonyms until rate is 8-10 per 1,000 words."
                 )
             prompt += "\n\nRevise the complete article based on this quality feedback:\n- " + "\n- ".join(feedback)
 
