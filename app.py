@@ -151,13 +151,27 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
         raw_query,
     )
     clean = re.sub(r"[^\w\s]", " ", clean).strip()
-    words = [w for w in clean.split() if len(w) > 2 and w.lower() not in STOPWORDS]
+    desc_words = [w for w in clean.split() if len(w) > 2 and w.lower() not in STOPWORDS]
 
-    # Keep the model's full descriptive phrase (up to 5 words) instead of an
-    # arbitrary first-3-words slice, so the search stays specific to what the
-    # marker actually describes rather than losing its most distinctive terms.
-    if len(words) >= 2:
-        return " ".join(words[:5])
+    # Blend in the section heading so that if the model reuses the same marker
+    # description in multiple places, the search still differs per section
+    # instead of returning the same photo throughout the article.
+    heading_words = [
+        w for w in re.sub(r"[^\w\s]", " ", section_context).split()
+        if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
+        and w.lower() not in {"software", "system", "management", "pakistan"}
+    ]
+
+    seen = set()
+    combined = []
+    for w in heading_words[:3] + desc_words:
+        wl = w.lower()
+        if wl not in seen:
+            seen.add(wl)
+            combined.append(w)
+
+    if len(combined) >= 2:
+        return " ".join(combined[:6])
 
     # Not enough to go on from the marker text alone - fall back to context,
     # skipping acronyms (FBR, POS, SRB, GST...) which return meaningless photos.
@@ -172,14 +186,22 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
     return "pharmacy medicine store counter"
 
 
-def get_pexels_image(query, primary_keyword="", section_context=""):
+def get_pexels_image(query, primary_keyword="", section_context="", used_urls=None):
     fallback_image = "https://picsum.photos/1200/800"
+    used_urls = used_urls if used_urls is not None else set()
     if not pexels_key:
         return fallback_image
 
+    def first_unused(photos):
+        for photo in photos:
+            url = photo["src"]["large"]
+            if url not in used_urls:
+                return url
+        return None
+
     search_query = clean_image_search_query(query, primary_keyword, section_context)
     headers = {"Authorization": pexels_key}
-    params = {"query": search_query, "per_page": 1, "orientation": "landscape"}
+    params = {"query": search_query, "per_page": 5, "orientation": "landscape"}
 
     try:
         response = requests.get(
@@ -190,8 +212,10 @@ def get_pexels_image(query, primary_keyword="", section_context=""):
         )
         if response.status_code == 200:
             data = response.json()
-            if data.get("photos") and len(data["photos"]) > 0:
-                return data["photos"][0]["src"]["large"]
+            photos = data.get("photos") or []
+            picked = first_unused(photos)
+            if picked:
+                return picked
     except Exception as e:
         app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
 
@@ -203,12 +227,14 @@ def get_pexels_image(query, primary_keyword="", section_context=""):
             if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
         ]
         broad_query = f"{' '.join(fallback_words[:2])} retail store".strip() if fallback_words else "pharmacy retail store"
-        fallback_params = {"query": broad_query, "per_page": 1, "orientation": "landscape"}
+        fallback_params = {"query": broad_query, "per_page": 5, "orientation": "landscape"}
         fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
         if fallback_res.status_code == 200:
             data = fallback_res.json()
-            if data.get("photos") and len(data["photos"]) > 0:
-                return data["photos"][0]["src"]["large"]
+            photos = data.get("photos") or []
+            picked = first_unused(photos)
+            if picked:
+                return picked
     except Exception:
         pass
 
@@ -312,10 +338,12 @@ def replace_image_markers(blog_text, primary_keyword=""):
     image_blocks = extract_bracket_blocks(blog_text, "[IMAGE:")
     diagram_blocks = extract_bracket_blocks(blog_text, "[DIAGRAM:")
 
+    used_urls = set()
     for full_match, description in image_blocks:
         position = blog_text.find(full_match)
         section_context = get_nearest_heading(blog_text, position) if position != -1 else ""
-        image_url = get_pexels_image(description, primary_keyword, section_context)
+        image_url = get_pexels_image(description, primary_keyword, section_context, used_urls)
+        used_urls.add(image_url)
         clean_caption = re.sub(r"[\[\]]", "", description).strip()
         markdown_image = f"\n\n![{clean_caption}]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
@@ -1097,12 +1125,21 @@ Then a blank line, followed by:
 # Title
 Follow: {title_instruction}
 
+FAQ REQUIREMENT:
+- Near the end of the article, before the conclusion, include a "## Frequently Asked Questions"
+  section with 4-6 real questions a buyer would ask about "{chosen_keyword}", each with a concise
+  2-3 sentence answer in prose (not a table).
+
 MEDIA RULES:
-- Include 3-5 relevant image markers: [IMAGE: retail pharmacist checking inventory stock at counter]
+- Include 2-4 image markers ONLY in sections where a photo genuinely adds value (e.g. illustrating
+  a physical process like scanning, counting stock, or reviewing a dashboard). Skip sections where
+  an image would be filler.
+- Each [IMAGE: ...] description MUST be unique and describe the SPECIFIC scene relevant to the
+  section it appears in - never reuse the same wording twice, and never copy the example below
+  verbatim. Example only (write your own for each marker): [IMAGE: retail pharmacist checking inventory stock at counter]
 - Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Received Order] --> B[Barcode POS Scan] --> C[Inventory Auto-Deduct]]
-- Spread these markers out, one per major ## section, immediately after that section's first
-  paragraph. Never place two or more markers back-to-back, and never stack them all at the end
-  of the article.
+- Spread these markers out, immediately after a relevant section's first paragraph. Never place
+  two or more markers back-to-back, and never stack them all at the end of the article.
 
 Output only the finished article content."""
 
