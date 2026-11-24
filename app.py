@@ -867,6 +867,54 @@ def save_remote_version():
     return jsonify({"filename": filename, "metadata": entry, "metadata_saved": bool(indexed)}), 201
 
 
+def remote_evidence_enabled():
+    return (os.getenv("SEO_REMOTE_EVIDENCE", "") == "1"
+            and os.getenv("SEO_OWNER_AUTH", "").strip().lower() in {"1", "true", "on"}
+            and github_store._configured())
+
+
+def save_remote_evidence(filename, body, evidence):
+    if not remote_evidence_enabled() or evidence["status"] == "not_requested":
+        return False
+    payload = {"schema": 1, "article_sha256": sha256(body.encode("utf-8")).hexdigest(),
+               "method": evidence["method"], "status": evidence["status"],
+               "passages": evidence["passages"]}
+    try:
+        return bool(github_store.save_file(
+            f"evidence/{filename}.json", json.dumps(payload, ensure_ascii=False),
+            message="Save article evidence", expected_sha=None))
+    except Exception:
+        app.logger.warning("Article evidence write failed")
+        return False
+
+
+def load_remote_evidence(filename, body):
+    if not remote_evidence_enabled():
+        return None
+    try:
+        content, _ = github_store.get_file(f"evidence/{filename}.json")
+        if not content or len(content) > 100000:
+            return None
+        payload = json.loads(content)
+        if payload["schema"] != 1 or payload["article_sha256"] != sha256(body.encode("utf-8")).hexdigest():
+            return None
+        passages = payload["passages"]
+        if not isinstance(passages, list) or len(passages) > 6:
+            return None
+        if payload["status"] not in ("retrieved", "no_matches") or not isinstance(payload["method"], str):
+            return None
+        for row in passages:
+            if not isinstance(row, dict) or any(not isinstance(row.get(key), str) for key in ("source_id", "title", "url", "kind", "passage")):
+                return None
+            if not re.fullmatch(r"S[1-5]", row["source_id"]) or len(row["passage"]) > 2400:
+                return None
+        return {"method": payload["method"], "status": payload["status"],
+                "passages": passages, "citations": citation_report(body, passages)}
+    except Exception:
+        app.logger.warning("Article evidence could not be loaded")
+        return None
+
+
 @app.route("/api/blog/<filename>")
 def api_get_blog(filename):
     safe_filename = os.path.basename(filename)
@@ -899,6 +947,7 @@ def api_get_blog(filename):
         "keyword": meta.get("keyword") or safe_filename.replace("_", " ").replace(".md", ""),
         "word_count": meta.get("wordCount") or len(raw_text.split()),
         "meta_description": meta.get("metaDescription", ""),
+        "evidence": load_remote_evidence(safe_filename, raw_text),
         "version_of": meta.get("versionOf"),
         "is_remote_version": bool(meta.get("isRemoteVersion") or safe_filename.startswith("remote_version_")),
     })
@@ -1578,24 +1627,31 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(body)
 
+        evidence_result = {"method": evidence_method, "passages": evidence,
+                           "citations": citation_report(body, evidence),
+                           "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"}
+        storage = {"article_saved": False, "metadata_saved": False, "evidence_saved": False,
+                   "remote_configured": github_store._configured(),
+                   "evidence_enabled": remote_evidence_enabled()}
         try:
-            github_store.save_file(
-                f"{DRAFTS_REPO_DIR}/{safe_filename}",
-                body,
-                message="Save article draft",
-            )
-            _upsert_manifest_entry({
-                "filename": safe_filename,
-                "keyword": keyword,
-                "wordCount": word_count,
-                "createdAt": time.strftime("%b %d, %Y \u00b7 %H:%M UTC", time.gmtime()),
-                "preview": (body[:180] + "\u2026") if len(body) > 180 else body,
-            })
+            storage["article_saved"] = bool(github_store.save_file(
+                f"{DRAFTS_REPO_DIR}/{safe_filename}", body,
+                message="Save article draft", expected_sha=None))
+            if storage["article_saved"]:
+                storage["metadata_saved"] = bool(_upsert_manifest_entry({
+                    "filename": safe_filename, "keyword": keyword, "wordCount": word_count,
+                    "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
+                    "preview": body[:180], "metaDescription": meta_description,
+                }))
+                storage["evidence_saved"] = save_remote_evidence(safe_filename, body, evidence_result)
         except Exception:
-            app.logger.exception("Failed to save draft to GitHub datastore repo")
+            app.logger.warning("Remote article save incomplete", exc_info=True)
 
-        with open(LAST_GEN_FILE, "w") as f:
-            f.write(str(time.time()))
+        try:
+            with open(LAST_GEN_FILE, "w") as f:
+                f.write(str(time.time()))
+        except OSError:
+            app.logger.warning("Generation cooldown state could not be written")
 
         return jsonify({
             "keyword": keyword,
@@ -1604,9 +1660,8 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "content": body,
             "word_count": word_count,
             "keyword_count": keyword_count,
-            "evidence": {"method": evidence_method, "passages": evidence,
-                         "citations": citation_report(body, evidence),
-                         "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"},
+            "evidence": evidence_result,
+            "storage": storage,
             "secondary_keyword_counts": {
                 item["keyword"]: body.lower().count(item["keyword"].lower())
                 for item in secondary_keywords

@@ -1315,7 +1315,7 @@ async function loadDraftFromServer(filename){
     const blog={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
       content:data.content,wordCount:data.word_count,
-      metaDescription:data.meta_description||'',versionOf:data.version_of||null,isRemoteVersion:!!data.is_remote_version,
+      metaDescription:data.meta_description||'',versionOf:data.version_of||null,isRemoteVersion:!!data.is_remote_version,evidence:data.evidence||null,
       createdAt:serverFileMeta[filename]?.createdAt||'On server',
       preview:(data.content.substring(0,180))+'…'
     };
@@ -1323,7 +1323,7 @@ async function loadDraftFromServer(filename){
     savedBlogs.unshift(blog);
     try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){showToast('Article opened but browser storage is unavailable.','warning');}
     updateHeaderCounters();
-    restoreDraftEvidence(null);
+    restoreDraftEvidence(blog.evidence);
 
     rawBlogContent=blog.content;
     currentDraftFilename=blog.filename;
@@ -1745,8 +1745,9 @@ async function generateArticle(){
     restoreDraftEvidence(newPost.evidence);
     // The server report applies to the generated Markdown; if formatting changed,
     // keep the evidence but explicitly withhold a potentially stale report.
-    if(draftSaved)showToast('Article generated');
-    else showToast('Article generated but browser storage is unavailable. Download your article and retain your research.','warning');
+    if(!draftSaved)showToast('Article generated but browser storage is unavailable. Download your article and retain your research.','warning');
+    else if(data.storage?.remote_configured&&(!data.storage.article_saved||!data.storage.metadata_saved||(data.storage.evidence_enabled&&data.evidence?.status!=='not_requested'&&!data.storage.evidence_saved)))showToast('Article generated. Remote save incomplete; retain your local copy and research.','warning');
+    else showToast('Article generated');
 
   }catch(err){
     stopLoadingSteps();
