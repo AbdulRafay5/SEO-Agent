@@ -1056,6 +1056,43 @@ def api_trends():
         return response
 
 
+@app.post("/api/competitors/search")
+def api_competitor_search():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    topic, geo, language = data.get("topic", ""), data.get("geo", ""), data.get("search_lang", "")
+    if not isinstance(topic, str) or not topic.strip() or len(topic) > 240:
+        return jsonify({"error": "Enter a topic of at most 240 characters."}), 400
+    if not isinstance(geo, str) or (geo and not re.fullmatch(r"[A-Za-z]{2}", geo)):
+        return jsonify({"error": "Use a two-letter country code."}), 400
+    if not isinstance(language, str) or (language and not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2,4})?", language.lower())):
+        return jsonify({"error": "Use a search language code such as en, fr or ur."}), 400
+    key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+    if not key:
+        return jsonify({"error": "Live search is optional. Configure BRAVE_SEARCH_API_KEY or use manual comparison."}), 503
+    params = {"q": topic.strip(), "count": 5, "country": geo.upper() or "ALL", "search_lang": language.lower() or "en"}
+    try:
+        response = requests.get("https://api.search.brave.com/res/v1/web/search",
+                                params=params, headers={"X-Subscription-Token": key, "Accept": "application/json"}, timeout=12)
+        if response.status_code == 429:
+            return jsonify({"error": "Search provider quota reached."}), 429
+        response.raise_for_status()
+        raw = response.json()
+        results = []
+        for item in raw.get("web", {}).get("results", [])[:5]:
+            url = item.get("url", "")
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+                continue
+            results.append({"url": url[:2048], "title": bleach.clean(str(item.get("title", "")), tags=[], strip=True)[:300],
+                            "snippet": bleach.clean(str(item.get("description", "")), tags=[], strip=True)[:1000]})
+        return jsonify({"source": "Brave Search", "region": params["country"], "search_lang": params["search_lang"], "results": results})
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        app.logger.warning("Search provider request failed")
+        return jsonify({"error": "Live search unavailable. Check provider settings or use manual comparison."}), 502
+
+
 @app.post("/api/competitors/compare")
 def api_compare_competitors():
     data = request.get_json(silent=True)

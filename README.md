@@ -35,3 +35,5 @@ Set GEMINI_API_KEY or GROQ_API_KEY and optional PEXELS_API_KEY in the deployment
 ## Competitor comparison
 
 In Keyword research, expand Competitor research and add up to five search results with their URLs, titles and headings. Compare heading coverage against the current draft if desired. No provider key is needed. This is a manual SERP comparison, not live search scraping or rank tracking; headings are matched by normalized exact text.
+
+Optional live competitor discovery: set BRAVE_SEARCH_API_KEY in your environment and use Find live results in Competitor research. Brave results are not Google rankings. Manual comparison remains available without a key. Set the provider spending limit before enabling; no API calls are made until a user requests live search. Headings still require manual input.

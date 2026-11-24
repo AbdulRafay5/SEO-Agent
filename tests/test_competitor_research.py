@@ -26,3 +26,18 @@ class CompetitorTests(unittest.TestCase):
 
     def test_invalid_input(self):
         self.assertEqual(app.test_client().post("/api/competitors/compare",json={"topic":"herbs","competitors":[]}).status_code,400)
+
+    def test_live_search_no_key(self):
+        from unittest.mock import patch
+        with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": ""}):
+            self.assertEqual(app.test_client().post("/api/competitors/search", json={"topic":"herbs"}).status_code, 503)
+
+    def test_live_search_mock(self):
+        from unittest.mock import patch, Mock
+        response = Mock(status_code=200)
+        response.json.return_value = {"web":{"results":[{"url":"https://example.com/herbs","title":"<b>Herbs</b>","description":"Guide"}]}}
+        with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY":"test"}), patch("app.requests.get", return_value=response) as get:
+            result = app.test_client().post("/api/competitors/search", json={"topic":"herbs","geo":"GB"})
+            self.assertEqual(result.status_code,200)
+            self.assertEqual(result.get_json()["results"][0]["title"],"Herbs")
+            self.assertEqual(get.call_args.kwargs["params"]["country"],"GB")

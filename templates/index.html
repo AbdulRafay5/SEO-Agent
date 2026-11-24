@@ -946,6 +946,13 @@ select.field-input{padding-left:12px;cursor:pointer}
         <details style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:16px">
           <summary style="cursor:pointer;font-weight:600">Competitor research</summary>
           <p style="font-size:13px;color:var(--muted);margin:8px 0">Compare up to five search results you supply. Paste titles and page headings; no automatic fetching or live ranking claims.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
+            <input id="competitor-search-lang" class="field-input no-icon" style="width:110px" value="en" aria-label="Search language code">
+            <button class="btn btn-secondary btn-sm" id="live-competitor-btn" onclick="findLiveCompetitors()">Find live results</button>
+            <span style="font-size:12px;color:var(--muted)">Optional Brave Search API · provider quota applies</span>
+          </div>
+          <p id="live-competitor-status" aria-live="polite" style="font-size:13px;color:var(--muted)"></p>
+          <div id="live-competitor-results" style="display:grid;gap:8px"></div>
           <div id="competitor-inputs"></div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
             <button class="btn btn-secondary btn-sm" onclick="addCompetitorInput()">Add competitor</button>
@@ -1933,12 +1940,33 @@ async function researchKeywords(){
   }catch(err){status.textContent=err.message||'Research unavailable';}
   finally{btn.disabled=false;}
 }
-function addCompetitorInput(){
+function addCompetitorInput(entry=null){
   const wrap=document.getElementById('competitor-inputs');
   if(wrap.children.length>=5){showToast('Maximum five competitors','warning');return;}
   const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
   row.innerHTML='<input class="field-input no-icon" data-competitor-url placeholder="https://example.com/article" aria-label="Competitor URL"><input class="field-input no-icon" data-competitor-title placeholder="Search result or page title" aria-label="Competitor title"><textarea class="field-input no-icon" data-competitor-headings rows="3" placeholder="Paste H2/H3 headings, one per line" aria-label="Competitor headings"></textarea>';
   const button=document.createElement('button');button.className='btn btn-secondary btn-sm';button.textContent='Remove competitor';button.onclick=()=>row.remove();row.appendChild(button);wrap.appendChild(row);
+  if(entry){row.querySelector('[data-competitor-url]').value=entry.url;row.querySelector('[data-competitor-title]').value=entry.title;}
+}
+async function findLiveCompetitors(){
+  const status=document.getElementById('live-competitor-status'),results=document.getElementById('live-competitor-results'),button=document.getElementById('live-competitor-btn');
+  const topic=document.getElementById('research-topic').value.trim();
+  if(!topic){status.textContent='Enter a research topic first.';return;}
+  button.disabled=true;status.textContent='Searching Brave…';results.replaceChildren();
+  try{
+    const res=await fetch('/api/competitors/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,geo:document.getElementById('research-geo').value.trim(),search_lang:document.getElementById('competitor-search-lang').value.trim()})});
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Search unavailable');
+    status.textContent=data.results.length+' results from Brave Search · '+data.region+' · Not Google rankings. Add page headings manually for comparison.';
+    for(const entry of data.results){
+      const row=document.createElement('div');row.style.cssText='padding:8px;border:1px solid var(--border);border-radius:var(--radius)';
+      const link=document.createElement('a');link.href=entry.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=entry.title;
+      const detail=document.createElement('p');detail.textContent=entry.snippet;detail.style.fontSize='13px';
+      const add=document.createElement('button');add.className='btn btn-secondary btn-sm';add.textContent='Add to comparison';add.onclick=()=>addCompetitorInput(entry);
+      row.append(link,detail,add);results.appendChild(row);
+    }
+  }catch(error){status.textContent=error.message||'Search unavailable';}
+  finally{button.disabled=false;}
 }
 async function compareCompetitors(){
   const topic=document.getElementById('research-topic').value.trim();
