@@ -24,6 +24,7 @@ import github_store
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
 from evidence_retrieval import validate_sources, retrieve, evidence_prompt
+from web_evidence import extract_page
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
@@ -1384,6 +1385,22 @@ def api_titles(keyword):
             "source": "fallback",
             "notice": "AI title generation failed, so relevant local title ideas were supplied.",
         })
+
+
+@app.post("/api/evidence/extract")
+def api_evidence_extract():
+    if os.getenv("SEO_WEB_EXTRACTION", "") != "1" or os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"1", "true", "on"}:
+        return jsonify({"error": "Webpage extraction requires an enabled private owner workspace. You can paste excerpts instead."}), 503
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    try:
+        return jsonify(extract_page(data.get("url")))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        app.logger.warning("Web evidence extraction failed")
+        return jsonify({"error": "Page extraction unavailable. Paste a relevant excerpt instead."}), 502
 
 
 @app.post("/api/evidence/preview")

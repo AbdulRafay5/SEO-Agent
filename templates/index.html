@@ -2101,8 +2101,26 @@ function addEvidenceSource(entry=null){
   const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
   row.innerHTML='<input class="field-input no-icon" data-evidence-title maxlength="240" placeholder="Source title" aria-label="Evidence title"><input class="field-input no-icon" data-evidence-url maxlength="2048" placeholder="Source URL (optional)" aria-label="Evidence URL"><textarea class="field-input no-icon" data-evidence-text maxlength="12000" rows="4" placeholder="Paste relevant source text" aria-label="Evidence text"></textarea>';
   const kind=document.createElement('select');kind.className='field-input no-icon';kind.setAttribute('aria-label','Evidence source type');kind.dataset.evidenceKind='';
-  for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);
+  for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet'],['webpage','Extracted webpage']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);
   if(entry){kind.value='search_snippet';row.querySelector('[data-evidence-title]').value=entry.title.slice(0,240);row.querySelector('[data-evidence-url]').value=entry.url;row.querySelector('[data-evidence-text]').value=entry.snippet;}
+  const extract=document.createElement('button');extract.className='btn btn-secondary btn-sm';extract.textContent='Extract webpage';
+  extract.onclick=async()=>{
+    const url=row.querySelector('[data-evidence-url]').value.trim();
+    if(!url){showToast('Enter a public HTTPS source URL','warning');return;}
+    extract.disabled=true;
+    try{
+      const response=await fetch('/api/evidence/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+      const data=await readApiResponse(response);
+      if(!response.ok)throw new Error(data.error||'Extraction failed');
+      if(row.querySelector('[data-evidence-url]').value.trim()!==url)return;
+      const field=row.querySelector('[data-evidence-text]');
+      if(field.value&&!confirm('Replace the current excerpt with extracted webpage text?'))return;
+      field.value=data.text;kind.value='webpage';
+      if(!row.querySelector('[data-evidence-title]').value)row.querySelector('[data-evidence-title]').value=data.title;
+      showToast('Webpage text extracted. Review before use.');
+    }catch(error){showToast(error.message||'Extraction unavailable','error');}
+    finally{extract.disabled=false;}
+  };row.appendChild(extract);
   const remove=document.createElement('button');remove.className='btn btn-secondary btn-sm';remove.textContent='Remove source';remove.onclick=()=>row.remove();row.appendChild(remove);wrap.appendChild(row);
 }
 function readEvidenceSources(){
@@ -2112,7 +2130,7 @@ function renderEvidenceResults(passages){
   const results=document.getElementById('evidence-results');results.replaceChildren();
   for(const passage of passages){
     const box=document.createElement('div');box.style.cssText='padding:8px;border:1px solid var(--border);font-size:12px;overflow-wrap:anywhere';
-    const title=document.createElement('strong');title.textContent=passage.source_id+' · '+passage.title+' · '+(passage.kind==='search_snippet'?'Search snippet':'Pasted excerpt');
+    const title=document.createElement('strong');title.textContent=passage.source_id+' · '+passage.title+' · '+(passage.kind==='search_snippet'?'Search snippet':passage.kind==='webpage'?'Extracted webpage':'Pasted excerpt');
     const text=document.createElement('p');text.textContent=passage.passage;
     const source=document.createElement('div');source.textContent=passage.url||'User-supplied text';box.append(title,source,text);results.appendChild(box);
   }
