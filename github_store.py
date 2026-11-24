@@ -9,7 +9,7 @@ is recycled, and different invocations can even land on different instances.
 That's why blogs "disappear" and why env vars are the only thing that
 reliably survives a redeploy.
 
-This module ports the pattern used by the devvibeSeoAgent reference project:
+This module provides persistent file storage:
 instead of relying on local disk, generated blogs (and, optionally, the
 API keys that used to live only in Vercel's env var screen) are saved as
 files in a GitHub repo via the Contents API. GitHub is the "disk".

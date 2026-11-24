@@ -184,7 +184,7 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
         return " ".join(combined[:6])
 
     # Not enough to go on from the marker text alone - fall back to context,
-    # skipping acronyms (FBR, POS, SRB, GST...) which return meaningless photos.
+    # Skip acronyms that may return irrelevant photos.
     context_words = [
         w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
         if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
@@ -230,7 +230,7 @@ def get_pexels_image(query, primary_keyword="", section_context="", used_urls=No
         app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
 
     # Broad fallback that stays on-topic instead of an unrelated single word
-    # or acronym (e.g. never search for "FBR store").
+    # or acronym.
     try:
         fallback_words = [
             w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
@@ -399,106 +399,8 @@ def clean_keyword_artifacts(text, keyword):
     return text.strip()
 
 
-def fix_keyword_typos(text, keyword):
-    keyword_word_count = len(keyword.split())
-    target_clean = re.sub(r"[^\w\s]", "", keyword).lower()
-
-    word_spans = [(m.group(), m.start(), m.end()) for m in re.finditer(r"\S+", text)]
-    fixed_text = text
-    offset = 0
-    i = 0
-
-    while i <= len(word_spans) - keyword_word_count:
-        window = word_spans[i : i + keyword_word_count]
-        window_text = " ".join(w[0] for w in window)
-        window_clean = re.sub(r"[^\w\s]", "", window_text).lower()
-
-        # High threshold: only fix genuine near-typos (e.g. one misspelled word), not
-        # loosely-similar phrasing with a different grammatical structure - a lower
-        # threshold here was swallowing verbs/subjects and breaking sentences.
-        similarity = difflib.SequenceMatcher(None, window_clean, target_clean).ratio()
-        if 0.92 <= similarity < 1.0:
-            start = window[0][1] + offset
-            end = window[-1][2] + offset
-            fixed_text = fixed_text[:start] + keyword + fixed_text[end:]
-            offset += len(keyword) - (end - start)
-            i += keyword_word_count
-        else:
-            i += 1
-
-    return fixed_text
-
-
 def collapse_duplicate_words(text):
     return re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", text, flags=re.IGNORECASE)
-
-
-def enforce_keyword_density(body, keyword, target_per_1000=8.0):
-    current_density = keyword_density(body, keyword)
-    if current_density >= target_per_1000:
-        return body
-
-    reference_sentences = [
-        f"For a fast-paced retail business, deploying a {keyword} ensures product catalog, stock counts, and sales receipts stay accurate.",
-        f"When choosing a {keyword}, store owners should verify how effectively it monitors expiration windows, returns, and daily totals.",
-        f"In real-world retail workflows, the practical value of a {keyword} lies in keeping the checkout counter running without calculation errors.",
-        f"A purpose-built {keyword} automates routine batch management while keeping fiscal documentation transparent and organized.",
-        f"Retail pharmacies adopting a {keyword} typically see immediate efficiency gains across sales counters and backroom shelves.",
-    ]
-
-    paragraphs = body.split("\n\n")
-    keyword_terms = {term.casefold() for term in re.findall(r"[A-Za-z]{3,}", keyword)}
-    topic_terms = keyword_terms | {
-        "pos", "sales", "retail", "store", "shop", "inventory", "stock",
-        "billing", "invoice", "counter", "payment", "tax", "reporting", "pharmacy"
-    }
-
-    def suitable_prose(paragraph):
-        stripped = paragraph.strip()
-        lowered = stripped.casefold()
-        words = re.findall(r"\b\w+\b", stripped)
-        if len(words) < 15 or len(words) > 120:
-            return False
-        if not re.search(r"[.!?][\"')\]]?$", stripped):
-            return False
-        if stripped.startswith(("#", "![", "|", "-", "*", ">")):
-            return False
-        return bool(set(re.findall(r"[a-z]{3,}", lowered)) & topic_terms)
-
-    prose_candidates = [
-        (index, sum(w in topic_terms for w in re.findall(r"[a-z]{3,}", paragraph.casefold())))
-        for index, paragraph in enumerate(paragraphs)
-        if suitable_prose(paragraph)
-    ]
-    if not prose_candidates:
-        return body
-
-    random.shuffle(prose_candidates)
-    prose_candidates.sort(key=lambda item: item[1], reverse=True)
-    sentence_order = random.sample(reference_sentences, len(reference_sentences))
-
-    sentence_index = 0
-    used_indices = []
-    for paragraph_index, _ in prose_candidates:
-        if sentence_index >= len(sentence_order):
-            break
-        if paragraph_index in used_indices:
-            continue
-        candidate = sentence_order[sentence_index]
-        proposed = "\n\n".join(
-            paragraphs[:paragraph_index]
-            + [paragraphs[paragraph_index].rstrip() + " " + candidate]
-            + paragraphs[paragraph_index + 1:]
-        )
-        proposed_density = keyword_density(proposed, keyword)
-        if proposed_density <= 10.0:
-            paragraphs[paragraph_index] = paragraphs[paragraph_index].rstrip() + " " + candidate
-            used_indices.append(paragraph_index)
-            sentence_index += 1
-            if proposed_density >= target_per_1000:
-                break
-
-    return "\n\n".join(paragraphs)
 
 
 def keyword_density(text, keyword):
@@ -506,35 +408,6 @@ def keyword_density(text, keyword):
     keyword_count = text.lower().count(keyword.lower())
     return (keyword_count / word_count) * 1000 if word_count else 0
 
-
-def enforce_secondary_keywords(body, secondary_keywords):
-    paragraphs = body.split("\n\n")
-    for item in secondary_keywords:
-        keyword = item["keyword"]
-        target_count = item["count"]
-        current_count = body.lower().count(keyword.lower())
-        needed = max(0, target_count - current_count)
-        if not needed:
-            continue
-
-        for index, paragraph in enumerate(paragraphs):
-            if needed <= 0:
-                break
-            words = paragraph.split()
-            if len(words) < 15 or paragraph.lstrip().startswith(("#", "![", "- ", "* ", "> ", "|")):
-                continue
-            sentence = f"This integration also makes {keyword} straightforward to evaluate during regular counter audits."
-            paragraphs[index] = paragraph.rstrip() + " " + sentence
-            needed -= 1
-
-        body = "\n\n".join(paragraphs)
-
-    return body
-
-
-# ============================================================================
-# PERSUASIVE & BALANCED TITLE GENERATION
-# ============================================================================
 
 def parse_primary_keywords(raw_keyword):
     parts = re.split(r"[,;|\n]+", raw_keyword or "")
@@ -1248,7 +1121,6 @@ def api_generate(keyword):
             raw_text = generate_ai_text(prompt, max_tokens=4000)
             body_preview = clean_keyword_artifacts(raw_text.strip(), keyword)
             preview_word_count = len(body_preview.split())
-            preview_density = keyword_density(body_preview, keyword)
 
             if preview_word_count >= MIN_WORD_COUNT or attempt == 2:
                 break
