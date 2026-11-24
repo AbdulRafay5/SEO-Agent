@@ -23,7 +23,7 @@ from keywords import all_keywords
 import github_store
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
-from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt, EmbeddingCache
+from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt, EmbeddingCache, citation_report
 from hashlib import sha256
 from web_evidence import extract_page
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
@@ -1605,6 +1605,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "word_count": word_count,
             "keyword_count": keyword_count,
             "evidence": {"method": evidence_method, "passages": evidence,
+                         "citations": citation_report(body, evidence),
                          "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"},
             "secondary_keyword_counts": {
                 item["keyword"]: body.lower().count(item["keyword"].lower())

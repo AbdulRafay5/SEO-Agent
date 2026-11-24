@@ -687,6 +687,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             <div id="evidence-inputs"></div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"><button class="btn btn-secondary btn-sm" onclick="addEvidenceSource()">Add source</button><button class="btn btn-secondary btn-sm" id="evidence-preview-btn" onclick="previewEvidence()">Preview relevant evidence</button></div>
             <p id="evidence-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
+            <div id="citation-report" hidden style="font-size:12px;border:1px solid var(--border);padding:8px;margin:6px 0;overflow-wrap:anywhere" aria-live="polite"></div>
             <div id="evidence-results" style="display:grid;gap:6px;max-height:240px;overflow:auto"></div>
           </details>
           <!-- Trending now -->
@@ -1286,6 +1287,7 @@ function renderRecentDrafts(){
 }
 
 function openDraft(filename){
+  clearCitationReport();
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
@@ -1305,6 +1307,7 @@ function openDraft(filename){
    repo but never generated/opened in this browser, so they have no cached
    .content in savedBlogs yet) - fetches the raw markdown on demand. */
 async function loadDraftFromServer(filename){
+  clearCitationReport();
   try{
     const res=await fetch('/api/blog/'+encodeURIComponent(filename));
     const data=await readApiResponse(res);
@@ -1679,6 +1682,7 @@ async function generateArticle(){
   genBtn.insertAdjacentHTML('afterbegin','<span class="btn-spinner"></span>');
   const spinner=genBtn.querySelector('.btn-spinner');
 
+  clearCitationReport();
   setOutputState('loading');
   startLoadingSteps();
   document.getElementById('generate-error').style.display='none';
@@ -1736,6 +1740,7 @@ async function generateArticle(){
     setOutputState('rendered');
     setEditorTab('rendered');
     renderEvidenceResults(data.evidence?.passages||[]);
+    renderCitationReport(data.evidence?.citations, data.evidence?.status);
     document.getElementById('evidence-status').textContent=data.evidence?.status==='retrieved'?data.evidence.method+' · Generation received '+data.evidence.passages.length+' passages; check citations against sources.':data.evidence?.status==='no_matches'?'No matching evidence was found; article is not grounded in the supplied text.':'';
     showToast('Article generated');
 
@@ -1852,6 +1857,7 @@ async function requestRevision(){
   finally{button.disabled=false;}
 }
 function applyWorkspaceRevision(text){
+  clearCitationReport();
   rawBlogContent=text;
   document.getElementById('markdown-raw-view').value=text;
   document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(text);
@@ -1874,7 +1880,7 @@ function undoRevision(){
   const original=revisionUndo.before;revisionUndo=null;applyWorkspaceRevision(original);openRevisionPanel();
   document.getElementById('revision-status').textContent='Revision undone.';
 }
-function syncRawEdits(){closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
+function syncRawEdits(){clearCitationReport();closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
 
 function saveWorkspaceVersion(){
   const visible=['markdown-rendered-view','markdown-raw-view'].some(id=>document.getElementById(id).style.display!=='none');
@@ -2209,6 +2215,21 @@ function exportEvidenceLibrary(){
     const a=document.createElement('a');a.href=url;a.download='seo_research_library.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
     status.textContent='Research export requested.';
   }catch(error){status.textContent=error.message||'Research export failed.';}
+}
+function clearCitationReport(){
+  const box=document.getElementById('citation-report');box.hidden=true;box.replaceChildren();
+}
+function renderCitationReport(report,status){
+  clearCitationReport();
+  if(!report||status==='not_requested')return;
+  const box=document.getElementById('citation-report');box.hidden=false;
+  const add=(text,strong=false)=>{const el=document.createElement(strong?'strong':'p');el.textContent=text;box.appendChild(el);};
+  add('Citation reference check',true);
+  add(report.unknown_ids.length?'Unknown source IDs: '+report.unknown_ids.map(row=>row.source_id).join(', '):report.citation_count?'All detected source IDs match retrieved evidence.':'No source ID citations detected.');
+  add(report.cited_sources.length+' of '+report.available_sources+' retrieved sources cited.');
+  for(const source of report.cited_sources)add(source.source_id+' · '+source.title+' · '+source.mentions+' mention(s)'+(source.url?' · '+source.url:''));
+  if(report.uncited_sources.length)add('Unused retrieved sources: '+report.uncited_sources.map(row=>row.source_id).join(', '));
+  add(report.note);
 }
 function renderEvidenceResults(passages){
   const results=document.getElementById('evidence-results');results.replaceChildren();

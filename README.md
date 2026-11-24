@@ -77,3 +77,7 @@ Open Evidence grounding → Saved research library to save selected source text 
 ### Embedding caching
 
 For an authenticated owner workspace, enable SEO_EMBEDDING_CACHE=1 alongside SEO_SEMANTIC_RETRIEVAL=1 and SEO_OWNER_AUTH=1. The process-local cache reuses identical query and passage embeddings for the same provider model and owner configuration. It stores hashes and float32 vectors in memory, capped at 256 entries with a 30-minute expiry; expired entries are removed on cache access. It does not persist across process restarts, Vercel cold starts or separate workers, and simultaneous cache misses may repeat a request. No source text or vector database is written to disk. Anonymous deployments bypass the cache. Embedding calls remain subject to provider quotas and charges. Disabling caching stops reuse but restarting the process is needed to immediately clear its memory.
+
+### Citation reference checks
+
+Evidence-backed generation reports explicit bracketed source IDs (for example [S1] or [S1, S2]), unknown IDs, cited sources and unused retrieved sources. The original generated content is not silently changed. Checks only compare identifiers against retrieved passages; factual entailment, arbitrary hyperlinks and external source accuracy are not verified. The report is for the latest generation and is cleared when opening another draft or editing content; reports are not persisted. Review the underlying evidence before publication.

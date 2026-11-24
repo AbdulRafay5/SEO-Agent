@@ -232,3 +232,26 @@ class EmbeddingCache:
                 while len(self._entries) > self.capacity:
                     self._entries.popitem(last=False)
         return [list(found[key]) for key in keys]
+
+
+def citation_report(markdown, passages):
+    """Check explicit source IDs, not factual entailment or external URLs."""
+    sources = {}
+    for row in passages:
+        source_id = row["source_id"]
+        sources.setdefault(source_id, {"source_id": source_id, "title": row["title"],
+                                       "url": row["url"], "kind": row["kind"]})
+    # Ignore fenced code and inline code, which may contain example IDs.
+    body = re.sub(r"(?ms)^ {0,3}(?:\x60{3,}|~{3,}).*?^ {0,3}(?:\x60{3,}|~{3,})[ \t]*$", "", markdown)
+    body = re.sub(r"\x60+[^\n]*?\x60+", "", body)
+    ids = []
+    for match in re.finditer(r"\[((?:S\d+\s*,\s*)*S\d+)\]", body):
+        ids.extend(re.findall(r"S\d+", match.group(1)))
+    counts = Counter(ids)
+    used = [dict(sources[key], mentions=count) for key, count in counts.items() if key in sources]
+    unknown = [{"source_id": key, "mentions": count} for key, count in counts.items() if key not in sources]
+    return {"status": "unknown_ids" if unknown else "no_citations" if not ids else "known_ids",
+            "cited_sources": used, "unknown_ids": unknown,
+            "uncited_sources": [source for key, source in sources.items() if key not in counts],
+            "available_sources": len(sources), "citation_count": len(ids),
+            "note": "Checks source ID membership only. Does not verify factual claims, citation placement, or URL contents."}
