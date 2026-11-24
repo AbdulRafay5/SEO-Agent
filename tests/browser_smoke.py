@@ -74,6 +74,26 @@ def main():
                 expect(page.locator("#target-keyword")).to_have_value("indoor herb garden")
                 assert not errors, errors
                 context.close()
+                mobile = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, device_scale_factor=2)
+                page = mobile.new_page()
+                mobile_errors = []
+                page.on("pageerror", lambda error: mobile_errors.append(str(error)))
+                page.route("https://**/*", external)
+                page.goto(f"http://127.0.0.1:{server.server_port}/")
+                expect(page.locator("#screen-studio")).to_be_visible()
+                page.get_by_role("button", name="Open navigation").click()
+                expect(page.locator("#mobile-drawer")).to_have_class("drawer open")
+                page.locator("#m-tab-btn-keywords").click()
+                expect(page.locator("#screen-keywords")).to_be_visible()
+                page.locator("#research-topic").fill("Indoor gardening")
+                page.locator("#research-btn").click()
+                expect(page.locator("#keywords-table-body")).to_contain_text("indoor herb garden")
+                page.locator("#keywords-table-body tr").filter(has_text="indoor herb garden").get_by_role("button", name="Use in Studio").click()
+                expect(page.locator("#target-keyword")).to_have_value("indoor herb garden")
+                page.locator("#btn-fetch-titles").click()
+                expect(page.locator(".brainstorm-card").first).to_be_visible()
+                assert not mobile_errors, mobile_errors
+                mobile.close()
                 browser.close()
         finally:
             server.shutdown()
