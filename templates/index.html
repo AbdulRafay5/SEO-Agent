@@ -763,6 +763,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             </li>
           </ul>
           <div class="article-tab-actions">
+            <button onclick="openRevisionPanel()" id="btn-revise" class="icon-btn" aria-label="Revise section"><span style="font-size:13px">Revise</span></button>
             <button onclick="analyzeCurrentArticle()" id="btn-seo-analysis" class="icon-btn" aria-label="Analyze SEO">
               <i data-lucide="list-checks" style="width:15px;height:15px" aria-hidden="true"></i>
               <span style="font-size:13px">SEO analysis</span>
@@ -778,6 +779,16 @@ select.field-input{padding-left:12px;cursor:pointer}
           </div>
         </div>
 
+        <section id="revision-panel" hidden style="border-bottom:1px solid var(--border);padding:12px;max-height:42vh;overflow:auto;background:var(--surface)">
+          <div style="display:flex;justify-content:space-between;gap:8px"><strong>Revise article section</strong><button class="btn btn-secondary btn-sm" onclick="closeRevisionPanel()">Close</button></div>
+          <label for="revision-section" class="field-label">Section</label><select id="revision-section" class="field-input no-icon" onchange="clearRevisionPreview()"></select>
+          <label for="revision-action" class="field-label">Action</label><select id="revision-action" class="field-input no-icon"><option value="rewrite">Rewrite</option><option value="expand">Expand</option><option value="shorten">Shorten</option><option value="readability">Improve readability</option><option value="tone">Change tone</option><option value="faq">Add FAQs</option></select>
+          <input id="revision-instruction" class="field-input no-icon" maxlength="500" placeholder="Optional instructions" aria-label="Revision instructions">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="revision-request" class="btn btn-primary btn-sm" onclick="requestRevision()">Preview revision</button><button id="revision-accept" class="btn btn-secondary btn-sm" disabled onclick="acceptRevision()">Accept revision</button><button id="revision-undo" class="btn btn-secondary btn-sm" disabled onclick="undoRevision()">Undo revision</button></div>
+          <p id="revision-status" aria-live="polite" style="font-size:13px;margin:8px 0"></p>
+          <textarea id="revision-preview" class="field-input no-icon" rows="6" aria-label="Proposed revision" hidden></textarea>
+          <p style="font-size:12px;color:var(--muted)">Revisions affect the current workspace only. Copy or download to keep them; the original saved draft remains unchanged.</p>
+        </section>
         <section id="seo-analysis-panel" hidden style="border-bottom:1px solid var(--border);padding:14px;max-height:35vh;overflow:auto;background:var(--surface)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><strong>Editorial SEO checklist</strong><button class="btn btn-secondary btn-sm" onclick="document.getElementById('seo-analysis-panel').hidden=true">Close</button></div>
           <label for="seo-description" class="field-label">Meta description (optional)</label>
@@ -1198,6 +1209,7 @@ function openSettings(){
 
 /* ─── output state machine ─── */
 function setOutputState(state){
+  closeRevisionPanel();
   document.getElementById("seo-analysis-panel").hidden=true;
   const ids=['studio-empty-state','brainstorm-state','generation-loader','markdown-rendered-view','markdown-raw-view'];
   ids.forEach(id=>{
@@ -1740,7 +1752,84 @@ function toggleEditorMode(mode){
   }
 }
 
-function syncRawEdits(){rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
+let revisionSections=[],revisionSnapshot='',revisionPending=null,revisionUndo=null,revisionRequestId=0;
+function splitRevisionSections(markdown){
+  const lines=markdown.split('\n');const sections=[];let start=0;let fence=null;
+  for(let i=0;i<lines.length;i++){
+    const match=lines[i].match(/^ {0,3}(`{3,}|~{3,})/);
+    if(match){if(!fence)fence=match[1];else if(match[1][0]===fence[0]&&match[1].length>=fence.length)fence=null;continue;}
+    if(!fence&&i>start&&/^ {0,3}#{1,6}\s+/.test(lines[i])){
+      sections.push({start,end:i,label:lines[start].replace(/^\s*#+\s*/,'').trim()||'Introduction'});start=i;
+    }
+  }
+  sections.push({start,end:lines.length,label:lines[start].replace(/^\s*#+\s*/,'').trim()||'Section'});
+  return sections;
+}
+function clearRevisionPreview(){
+  revisionPending=null;revisionRequestId++;
+  document.getElementById('revision-preview').hidden=true;
+  document.getElementById('revision-accept').disabled=true;
+  document.getElementById('revision-status').textContent='';
+}
+function closeRevisionPanel(){
+  document.getElementById('revision-panel').hidden=true;clearRevisionPreview();
+}
+function openRevisionPanel(){
+  if(!rawBlogContent.trim()){showToast('Generate or open an article first','warning');return;}
+  document.getElementById('seo-analysis-panel').hidden=true;
+  clearRevisionPreview();
+  revisionSnapshot=rawBlogContent;
+  revisionSections=splitRevisionSections(revisionSnapshot);
+  const select=document.getElementById('revision-section');select.replaceChildren();
+  revisionSections.forEach((section,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=section.label.slice(0,100);select.appendChild(option);});
+  document.getElementById('revision-undo').disabled=!(revisionUndo&&revisionUndo.after===rawBlogContent);
+  document.getElementById('revision-panel').hidden=false;
+}
+async function requestRevision(){
+  if(rawBlogContent!==revisionSnapshot){openRevisionPanel();return;}
+  clearRevisionPreview();
+  const id=revisionRequestId;const snapshot=revisionSnapshot;
+  const section=revisionSections[Number(document.getElementById('revision-section').value)];
+  const status=document.getElementById('revision-status'),button=document.getElementById('revision-request');
+  if(!section)return;
+  const text=snapshot.split('\n').slice(section.start,section.end).join('\n');
+  button.disabled=true;status.textContent='Preparing revision…';
+  try{
+    const response=await fetch('/api/editor/revise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({section:text,action:document.getElementById('revision-action').value,instruction:document.getElementById('revision-instruction').value,topic:document.getElementById('target-keyword').value,language:document.getElementById('article-language').value})});
+    const data=await readApiResponse(response);
+    if(id!==revisionRequestId||rawBlogContent!==snapshot)return;
+    if(!response.ok)throw new Error(data.error||'Revision failed');
+    revisionPending={section,snapshot};
+    const preview=document.getElementById('revision-preview');preview.value=data.revision;preview.hidden=false;
+    document.getElementById('revision-accept').disabled=false;
+    status.textContent='Review or edit the proposed Markdown before accepting.';
+  }catch(error){if(id===revisionRequestId)status.textContent=error.message||'Revision unavailable';}
+  finally{button.disabled=false;}
+}
+function applyWorkspaceRevision(text){
+  rawBlogContent=text;
+  document.getElementById('markdown-raw-view').value=text;
+  document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(text);
+  document.getElementById('seo-analysis-panel').hidden=true;
+  const words=text.trim().split(/\s+/).filter(Boolean).length;
+  const keyword=document.getElementById('target-keyword').value.trim().toLowerCase();
+  const count=keyword?text.toLowerCase().split(keyword).length-1:0;
+  updateMetrics({word_count:words,rate_per_1000:words?1000*count/words:0,photo_count:(text.match(/!\[/g)||[]).length,diagram_count:0});
+}
+function acceptRevision(){
+  if(!revisionPending||rawBlogContent!==revisionPending.snapshot){openRevisionPanel();return;}
+  const text=document.getElementById('revision-preview').value.trim();if(!text)return;
+  const {section,snapshot}=revisionPending;const lines=snapshot.split('\n');
+  const replacement=[lines.slice(0,section.start).join('\n').trimEnd(),text,lines.slice(section.end).join('\n').trimStart()].filter(Boolean).join('\n\n');
+  revisionUndo={before:snapshot,after:replacement};applyWorkspaceRevision(replacement);openRevisionPanel();
+  document.getElementById('revision-status').textContent='Revision accepted in workspace. Original saved draft preserved.';
+}
+function undoRevision(){
+  if(!revisionUndo||rawBlogContent!==revisionUndo.after)return;
+  const original=revisionUndo.before;revisionUndo=null;applyWorkspaceRevision(original);openRevisionPanel();
+  document.getElementById('revision-status').textContent='Revision undone.';
+}
+function syncRawEdits(){closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
 
 function copyCurrentContent(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}

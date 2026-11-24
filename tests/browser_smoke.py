@@ -18,6 +18,8 @@ KEYWORDS = '[{"keyword":"indoor herb garden","intent":"informational","cluster":
 
 
 def fake_ai(prompt, max_tokens):
+    if "Markdown article editor" in prompt:
+        return "## Care\n\nRevised care instructions."
     return KEYWORDS if "keyword research assistant" in prompt else ARTICLE
 
 
@@ -59,6 +61,17 @@ def main():
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
                 page.locator("#btn-view-raw").click()
                 expect(page.locator("#markdown-raw-view")).to_be_visible()
+                original = page.locator("#markdown-raw-view").input_value()
+                page.locator("#btn-revise").click()
+                page.locator("#revision-section").select_option("1")
+                page.locator("#revision-request").click()
+                expect(page.locator("#revision-preview")).to_have_value("## Care\n\nRevised care instructions.")
+                expect(page.locator("#markdown-raw-view")).to_have_value(original)
+                page.locator("#revision-accept").click()
+                assert "Revised care instructions." in page.locator("#markdown-raw-view").input_value()
+                page.locator("#revision-undo").click()
+                expect(page.locator("#markdown-raw-view")).to_have_value(original)
+                page.locator("#revision-panel").get_by_role("button", name="Close").click()
                 page.locator("#btn-seo-analysis").click()
                 expect(page.locator("#seo-analysis-summary")).to_contain_text("editorial score")
                 page.locator("#seo-analysis-panel").get_by_role("button", name="Close").click()
