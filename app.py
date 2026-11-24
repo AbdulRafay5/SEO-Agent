@@ -14,7 +14,7 @@ import requests
 from google import genai
 from groq import Groq
 from pytrends.request import TrendReq
-from keywords import all_keywords, keyword_links, CONTACT_URL
+from keywords import all_keywords
 import github_store
 
 app = Flask(__name__)
@@ -83,7 +83,7 @@ pexels_key = (
 ).strip()
 
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
-client = Groq(api_key=groq_key)
+client = Groq(api_key=groq_key) if groq_key else None
 qwen_client = Groq(api_key=qwen_key) if qwen_key else None
 GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "openai/gpt-oss-120b"
@@ -111,6 +111,8 @@ def generate_ai_text(prompt, max_tokens):
         except Exception:
             app.logger.exception("Gemini AI request failed; falling back to Groq")
 
+    if client is None:
+        raise RuntimeError("Configure GEMINI_API_KEY or GROQ_API_KEY.")
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -167,7 +169,7 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
     heading_words = [
         w for w in re.sub(r"[^\w\s]", " ", section_context).split()
         if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
-        and w.lower() not in {"software", "system", "management", "pakistan"}
+        and w.lower() not in {"software", "system", "management", }
     ]
 
     seen = set()
@@ -186,7 +188,7 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
     context_words = [
         w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
         if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
-        and w.lower() not in {"software", "system", "management", "pakistan", "in"}
+        and w.lower() not in {"software", "system", "management", "in"}
     ]
     if context_words:
         return " ".join(context_words[:3]) + " retail counter"
@@ -371,12 +373,6 @@ def correct_keyword_input(keyword):
     return keyword
 
 
-def get_extra_internal_link_pool(current_keyword, limit=4):
-    candidates = [url for kw, url in keyword_links.items() if kw != current_keyword]
-    unique_urls = list(dict.fromkeys(candidates))
-    if len(unique_urls) <= limit:
-        return unique_urls
-    return random.sample(unique_urls, limit)
 
 
 def count_markdown_links(text):
@@ -396,195 +392,11 @@ def create_unique_blog_filename(keyword, title=None):
     return unique
 
 
-AUTHORITY_EXTERNAL_LINKS = {
-    "FBR": ("https://www.fbr.gov.pk/", "Federal Board of Revenue (FBR) official portal"),
-    "SRB": ("https://srb.gos.pk/", "Sindh Revenue Board (SRB) portal"),
-    "PRA": ("https://pra.punjab.gov.pk/", "Punjab Revenue Authority (PRA) portal"),
-    "KPRA": ("https://kpra.kp.gov.pk/", "Khyber Pakhtunkhwa Revenue Authority (KPRA)"),
-    "BRA": ("https://bra.gob.pk/", "Balochistan Revenue Authority (BRA)"),
-}
 
-# Jurisdiction/role cheat-sheet so the AI never mixes up which authority
-# governs which province/cities when a keyword mentions an abbreviation.
-TAX_AUTHORITY_CONTEXT = """
-PAKISTANI TAX AUTHORITY REFERENCE (use the correct one for each province/city - never mix these up):
-- FBR (Federal Board of Revenue): FEDERAL authority covering ALL of Pakistan. Handles income tax,
-  federal sales tax on GOODS, customs, and digital/e-invoicing rules nationwide. Applies everywhere
-  (Punjab, Sindh, KP, Balochistan, Islamabad) regardless of city.
-- PRA (Punjab Revenue Authority): Provincial authority for PUNJAB ONLY. Handles sales tax on SERVICES
-  in Punjab. Cities: Lahore, Rawalpindi, Faisalabad, Multan, Gujranwala, Sialkot, Sargodha.
-- SRB (Sindh Revenue Board): Provincial authority for SINDH ONLY. Handles sales tax on SERVICES in
-  Sindh. Cities: Karachi, Hyderabad, Sukkur, Larkana, Mirpurkhas.
-- KPRA (Khyber Pakhtunkhwa Revenue Authority): Provincial authority for KHYBER PAKHTUNKHWA ONLY.
-  Handles sales tax on SERVICES in KP. Cities: Peshawar, Abbottabad, Mardan, Swat, Kohat.
-- BRA (Balochistan Revenue Authority): Provincial authority for BALOCHISTAN ONLY. Handles sales tax
-  on SERVICES in Balochistan. Cities: Quetta, Gwadar, Turbat, Khuzdar.
-Never attribute a province's cities or services-tax authority to the wrong province (e.g. never
-mention SRB for a Punjab city, or PRA for a Sindh city). FBR applies nationwide regardless of city.
-"""
-
-
-def get_external_links_for_keyword(keyword):
-    matched = []
-    for authority, (url, label) in AUTHORITY_EXTERNAL_LINKS.items():
-        if authority in keyword.upper():
-            matched.append((url, label))
-    if not matched:
-        matched.append(("https://www.fbr.gov.pk/", "FBR tax regulations"))
-        matched.append(("https://en.wikipedia.org/wiki/Point_of_sale", "Point of Sale (POS) reference"))
-    return matched
-
-
-# ============================================================================
-# NATURAL LINKING & ARTIFACT CLEANING
-# ============================================================================
 
 def clean_keyword_artifacts(text, keyword):
-    """
-    Eliminates dangling markdown artifacts, orphan asterisks, and broken link fragments
-    like 'in Keyword features](url)**' without altering body prose.
-    """
-    # Protect already well-formed links so the broken-link fix below can't re-match
-    # inside them (that mismatch was corrupting text into "[S[a[daHisab...").
-    protected_links = []
-
-    def _stash_link(match):
-        protected_links.append(match.group(0))
-        return f"\x00LINK{len(protected_links) - 1}\x00"
-
-    text = re.sub(r'\[[^\]]+\]\([^\)]+\)', _stash_link, text)
-
-    # Fix broken links where opening bracket was omitted
-    text = re.sub(
-        r'(?<!\[)([A-Za-z0-9\s—|-]+features\]\([^\)]+\))',
-        r'[\1',
-        text
-    )
-
-    for i, link in enumerate(protected_links):
-        text = text.replace(f"\x00LINK{i}\x00", link)
-
-    # Remove dangling asterisks directly attached to markdown links: **[Label](url) or [Label](url)**
-    text = re.sub(
-        r'\*{1,3}(\[[^\]]+\]\([^\)]+\))',
-        r'\1',
-        text
-    )
-    text = re.sub(
-        r'(\[[^\]]+\]\([^\)]+\))\*{1,3}',
-        r'\1',
-        text
-    )
-
-    # Clean orphaned bold asterisks attached directly to keyword boundaries: Keyword** or **Keyword
-    escaped_kw = re.escape(keyword)
-    text = re.sub(rf'\b{escaped_kw}\s*\*\*', keyword, text, flags=re.IGNORECASE)
-    text = re.sub(rf'\*\*\s*{escaped_kw}\b', keyword, text, flags=re.IGNORECASE)
-
-    # Remove duplicated location noise
-    duplicated_location = re.compile(
-        rf"(?:\*\*)?{escaped_kw}(?:\s+in\s+Pakistan)+(?:\*\*)?",
-        re.IGNORECASE,
-    )
-    text = duplicated_location.sub(keyword, text)
-
-    # Un-bold exact keyword in body text to maintain natural look
-    text = re.sub(rf"\*{{2}}\s*{escaped_kw}\s*\*{{2}}", keyword, text, flags=re.IGNORECASE)
-
-    # Fix sentences that lose their main verb due to model substitution
-    text = re.sub(
-        rf"(A dedicated\s+{escaped_kw})\s+(the visibility,\s+control)",
-        r"\1 delivers \2",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        rf"(generic POS solution can record a sale, but\s+{escaped_kw})\s+adds",
-        r"\1 solution adds",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    return text
-
-
-def weave_natural_links(body, keyword, primary_internal_link, min_internal=3, min_external=2):
-    """
-    Seamlessly inserts missing contextual internal and external links directly into natural
-    sentence structures without creating robotic, detached bulleted lists.
-    """
-    existing_links = [url for _, url in count_markdown_links(body)]
-    paragraphs = body.split("\n\n")
-
-    def is_valid_prose(p):
-        stripped = p.strip()
-        if len(stripped.split()) < 15 or len(stripped.split()) > 140:
-            return False
-        if stripped.startswith(("#", "!", "|", "-", "*", ">", "[")):
-            return False
-        return True
-
-    eligible_indices = [i for i, p in enumerate(paragraphs) if is_valid_prose(p)]
-    if not eligible_indices:
-        return body
-
-    current_internal_count = sum(1 for url in existing_links if "example.com" in url)
-    current_external_count = len(existing_links) - current_internal_count
-
-    # 1. Primary ExampleBrand feature & pricing link
-    if current_internal_count < min_internal and primary_internal_link not in existing_links:
-        for idx in eligible_indices:
-            p = paragraphs[idx]
-            if "ExampleBrand" in p.lower() and "[" not in p:
-                paragraphs[idx] = p.rstrip() + f" You can explore the complete operational capabilities on the [ExampleBrand pricing and features]({primary_internal_link}) page."
-                existing_links.append(primary_internal_link)
-                current_internal_count += 1
-                break
-
-    # 2. Demo booking link
-    if current_internal_count < min_internal and CONTACT_URL not in existing_links:
-        for idx in reversed(eligible_indices):
-            p = paragraphs[idx]
-            if "[" not in p and any(w in p.lower() for w in ["business", "system", "setup", "manage", "store", "pharmacy"]):
-                paragraphs[idx] = p.rstrip() + f" Pharmacy managers can also [book a free ExampleBrand demo]({CONTACT_URL}) to evaluate the register firsthand."
-                existing_links.append(CONTACT_URL)
-                current_internal_count += 1
-                break
-
-    # 3. Supplemental internal catalog links
-    if current_internal_count < min_internal:
-        extra_pool = get_extra_internal_link_pool(keyword, limit=4)
-        for url in extra_pool:
-            if current_internal_count >= min_internal:
-                break
-            if url in existing_links:
-                continue
-            topic_label = url.rstrip("/").split("/")[-1].replace("-", " ")
-            for idx in eligible_indices:
-                p = paragraphs[idx]
-                if "[" not in p and len(p.split()) > 20:
-                    paragraphs[idx] = p.rstrip() + f" For related counter workflows, review the [ExampleBrand {topic_label} options]({url})."
-                    existing_links.append(url)
-                    current_internal_count += 1
-                    break
-
-    # 4. External regulatory authority links
-    if current_external_count < min_external:
-        ext_targets = get_external_links_for_keyword(keyword)
-        for url, label in ext_targets:
-            if current_external_count >= min_external:
-                break
-            if url in existing_links:
-                continue
-            for idx in eligible_indices:
-                p = paragraphs[idx]
-                if "[" not in p and any(w in p.lower() for w in ["tax", "invoice", "compliance", "law", "fbr", "pos"]):
-                    paragraphs[idx] = p.rstrip() + f" Statutory compliance requirements can be reviewed on the [{label}]({url})."
-                    existing_links.append(url)
-                    current_external_count += 1
-                    break
-
-    return "\n\n".join(paragraphs)
+    # Preserve the original wording and links for arbitrary topics.
+    return text.strip()
 
 
 def fix_keyword_typos(text, keyword):
@@ -812,7 +624,7 @@ def add_power_word(title, primary_keywords, word):
 def normalize_meta_description(meta, primary_keywords):
     cleaned = re.sub(r"\s+", " ", (meta or "").strip())
     if not cleaned:
-        cleaned = f"Compare features, pricing, and key integrations for {primary_keywords[0]} in Pakistan. Practical guide for store owners."
+        cleaned = f"Explore {primary_keywords[0]} with practical information and useful insights."
     if len(cleaned) > 160:
         cleaned = cleaned[:157].rsplit(" ", 1)[0] + "..."
     return cleaned
@@ -853,90 +665,24 @@ def enforce_title_rules(options, primary_keywords, include_power_words):
     return normalized
 
 
-def build_title_prompt(chosen_keyword, primary_keywords, include_power_words):
-    keyword_list = "\n".join(f"- {kw}" for kw in primary_keywords)
-    power_word_catalog = "Best, Top, Easy, Simple, Proven, Smart, Quick, Complete, Fast, Modern, Powerful, Ultimate, Essential, Efficient, Affordable, Reliable, Advanced, Effortless, Instant, Seamless"
-
-    power_rule = (
-        f"""POWER WORDS (EXACTLY 3 OF THE 6 TITLES):
-- Exactly THREE titles must feature ONE natural power word from: {power_word_catalog}.
-- The remaining THREE titles MUST NOT contain any of those power words."""
-        if include_power_words
-        else f"""Do not include any power or hype words in any of the six titles (avoid: {power_word_catalog})."""
-    )
-
-    return f"""You are a High-Converting B2B & Retail Headline Specialist for ExampleBrand in Pakistan[cite: 1].
-
-PRIMARY SEARCH QUERY:
-"{chosen_keyword}"
-
-CURRENT YEAR: 2026.
-
-MANDATORY PRIMARY KEYWORDS (MUST APPEAR NATURALLY IN EVERY TITLE):
-{keyword_list}
-{TAX_AUTHORITY_CONTEXT}
-==================================================
-HEADLINE CRITERIA (PERSUASIVE, COMMERCIAL & INFORMATIONAL):
-==================================================
-Generate exactly 6 distinct, eye-catching, and highly persuasive titles.
-
-1. INTENT SPLIT (3 COMMERCIAL + 3 INFORMATIONAL):
-   - Titles 1-3 MUST be COMMERCIAL / BUYER-FOCUSED (choosing, comparisons, pricing, reviews, top systems):
-     Examples:
-     * "Best POS System in Pakistan 2026 | Top 7 Compared"
-     * "Free POS Software. Point of Sale System. Loyverse POS"
-     * "Top POS Software in Lahore | Pricing & Features"
-   - Titles 4-6 MUST be INFORMATIONAL / PROBLEM-SOLVING (how-to, setup, avoiding errors, tax integration, daily workflows):
-     Examples:
-     * "FBR Digital Invoicing System | Upload, Validate & Report"
-     * "How to Setup Pharmacy POS Software | Practical Guide"
-     * "Common Retail Billing Mistakes and How to Avoid Them"
-
-2. STRICT LENGTH: Under 12 words per title (concise, punchy).
-3. FORMAT: Use separators like '|', '.', or '—' to make headlines scannable.
-4. LANGUAGE: Simple, clear English understood immediately by retail managers in Pakistan.
-5. {power_rule}
-6. META DESCRIPTION: Write a natural meta description (120 to 155 characters) for each title highlighting business benefits.
-
-==================================================
-OUTPUT FORMAT
-==================================================
-Output exactly 6 numbered lines. No introductory chatter or bullet formatting:
-1. Title || Meta description
-2. Title || Meta description
-3. Title || Meta description
-4. Title || Meta description
-5. Title || Meta description
-6. Title || Meta description"""
+def build_title_prompt(chosen_keyword, primary_keywords, include_power_words, language="English", audience=""):
+    return f"""You are an SEO headline specialist. Generate six distinct titles about {chosen_keyword}.
+Write in {language} for {audience or 'a general audience'}. Preserve these search phrases where natural: {', '.join(primary_keywords)}.
+Match the actual search intent; do not assume a commercial, software, or local-business topic.
+Use concise titles, accurate claims and unique meta descriptions of at most 160 characters.
+Power words enabled: {include_power_words}. Do not invent rankings, statistics, or facts.
+Output exactly six numbered lines in the format: Title || Meta description."""
 
 
 def get_fallback_title_options(primary_keywords, include_power_words):
-    joined = " | ".join(primary_keywords)
+    topic = " | ".join(primary_keywords)
     options = [
-        {
-            "title": f"Best {joined} in Pakistan | Top Reviewed",
-            "meta_description": f"Compare top features, pricing, and integrations for {primary_keywords[0]} in Pakistan. Find the perfect system for your counter."
-        },
-        {
-            "title": f"{joined} Software | Pricing and Features 2026",
-            "meta_description": f"Explore affordable pricing, barcode scanning, and multi-branch tools for {primary_keywords[0]}. Boost counter productivity today."
-        },
-        {
-            "title": f"Top {joined} for Retail Stores Compared",
-            "meta_description": f"See how {primary_keywords[0]} compares against traditional khata. Choose the easiest system for your cash counter."
-        },
-        {
-            "title": f"{joined} | Setup, Invoicing and Reports",
-            "meta_description": f"Complete guide to managing {primary_keywords[0]}. Discover step-by-step setup, digital invoicing, and inventory control."
-        },
-        {
-            "title": f"Common {joined} Mistakes and How to Fix",
-            "meta_description": f"Avoid costly cash drawer leaks and stockout errors. Practical operational tips for {primary_keywords[0]} users."
-        },
-        {
-            "title": f"How to Automate {joined} | Practical Guide",
-            "meta_description": f"Streamline daily billing and tax filings with {primary_keywords[0]}. Save counter staff hours every single week."
-        },
+        {"title": title, "meta_description": f"Explore {topic} with useful explanations and practical insights."}
+        for title in (
+            f"{topic}: A Practical Guide", f"Understanding {topic}",
+            f"{topic}: Key Questions Answered", f"How to Approach {topic}",
+            f"{topic}: Common Mistakes", f"What to Know About {topic}"
+        )
     ]
     return enforce_title_rules(options, primary_keywords, include_power_words)
 
@@ -1078,131 +824,25 @@ def ensure_h1_title(body, chosen_title=None):
     return f"# {final_title}\n\n{introduction}" if introduction else f"# {final_title}"
 
 
-def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None):
-    internal_link = keyword_links.get(chosen_keyword, "https://example.com/pricing-plan/")
-    extra_links = get_extra_internal_link_pool(chosen_keyword)
-    extra_links_text = "\n".join(f"- {url}" for url in extra_links) if extra_links else "(none available)"
-
-    ext_targets = get_external_links_for_keyword(chosen_keyword)
-    ext_links_text = "\n".join(f"- {label}: {url}" for url, label in ext_targets)
-
-    if chosen_title:
-        title_instruction = f'Use this EXACT text as the H1 title: "{chosen_title}"'
-    else:
-        title_instruction = f'H1 title naming "{chosen_keyword}"'
-
-    purpose_context = blog_purpose.strip() or "Create a practical, comprehensive guide for store managers and retail pharmacy owners."
-    questions_context = audience_questions.strip() or "Address inventory leakage, stockout avoidance, batch expiry tracking, and billing operations."
-
-    tone_instructions = {
-        "professional": "Use a professional, authoritative, and direct tone. Open directly with the operational problem.",
-        "conversational": "Use a conversational and approachable tone while maintaining technical rigor.",
-        "informal": "Use a relaxed, friendly tone with simple language and relatable retail examples.",
-    }
-    tone_context = tone_instructions.get(blog_tone, tone_instructions["professional"])
-    secondary_keywords = secondary_keywords or []
-    secondary_context = ""
-    if secondary_keywords:
-        secondary_lines = "\n".join(
-            f'- Use the secondary keyword "{item["keyword"]}" exactly {item["count"]} time(s) in natural, relevant body prose.'
-            for item in secondary_keywords
-        )
-        secondary_context = f"\nSECONDARY KEYWORD RULES:\n{secondary_lines}\nDo not force secondary keywords into headings or metadata.\n"
-
-    primary_keyword_context = f"""
-PRIMARY KEYWORD USAGE RULES:
-- Treat "{chosen_keyword}" as a descriptive phrase, not a proper product name. Never write
-  constructions that imply it is a title, such as "X Is the {chosen_keyword}".
-- Every time "{chosen_keyword}" appears, the surrounding sentence or heading must remain
-  grammatically complete and make sense on its own (correct subject, verb, and articles like "a"/"the").
-- Vary the surrounding phrasing between occurrences (e.g. "a {chosen_keyword}", "the right
-  {chosen_keyword}", "this {chosen_keyword}") instead of repeating the identical sentence pattern,
-  while keeping the required keyword density.
-"""
-
-    return f"""You are a Senior SEO Content Writer for ExampleBrand, a Pakistani business management, POS, ERP, inventory, billing and digital invoicing platform[cite: 1].
-
-CURRENT YEAR: 2026.
-
-Write ONE complete, publish-ready blog article about "{chosen_keyword}".
-
-BLOG PURPOSE:
-{purpose_context}
-
-WRITING TONE:
-{tone_context}
-
-EDITORIAL DIRECTION:
-{questions_context}
-{secondary_context}
-{primary_keyword_context}
-{TAX_AUTHORITY_CONTEXT}
-The article MUST be at least {MIN_WORD_COUNT} words in the body content.
-
-==================================================
-PROVEN CONTENT STRUCTURE (based on top-performing ExampleBrand articles):
-==================================================
-Follow this general flow, adapting section names naturally to fit "{chosen_keyword}" (skip any
-section that genuinely doesn't apply to this topic):
-1. OPENING (2-4 short paragraphs): Speak directly to the reader's real-world confusion or
-   pressure around this topic before explaining the solution - acknowledge what's hard, then
-   promise clarity.
-2. DEFINITION: An early "What is {chosen_keyword}?" style section stating plainly what it is
-   and what it requires or includes.
-3. KEY REQUIREMENTS OR CHALLENGES: A numbered section with short, scannable numbered points
-   instead of long paragraphs.
-4. STEP-BY-STEP PROCESS: An integration/implementation section broken into clearly labeled
-   Step 1, Step 2, Step 3... sub-steps.
-5. COST/PRICING: When relevant to software or compliance topics, include a realistic tiered
-   cost breakdown (e.g. one-time setup, monthly subscription, maintenance) in PKR.
-6. WHY ExampleBrand: A section explaining why ExampleBrand is the sensible choice, with short
-   numbered reasons (fast integration, affordable pricing, local support, all-in-one platform).
-7. FEATURES: A concise numbered features list.
-8. ELIGIBILITY (when relevant to tax/compliance topics): A "Who Must Use/Comply" numbered list.
-9. BENEFITS: A short numbered benefits list.
-10. PENALTIES (when relevant to tax/compliance topics): A short numbered penalties-for-
-    non-compliance list to reinforce urgency.
-11. CONCLUSION: Reinforce the stakes and position ExampleBrand as the easy path forward.
-Mix numbered ("1.", "2.") and lettered (i., ii., iii.) sub-bullets across different sections for
-visual variety - but every numbered item must still be a complete, useful sentence or phrase,
-never a bare fragment.
-
-==================================================
-CRITICAL NATURAL LINKING INSTRUCTIONS:
-==================================================
-Never create a disconnected "Related Resources" or "Links" list. Weave hyperlinks directly into natural body sentences:
-- Pricing & Features: [ExampleBrand pricing and features]({internal_link})
-- Demo Booking: [book a free ExampleBrand demo]({CONTACT_URL})
-- Other internal resources:
-{extra_links_text}
-- External official references:
-{ext_links_text}
-
-FORMAT REQUIREMENTS:
-Start directly with:
-# Title
-Follow: {title_instruction}
-
-FAQ REQUIREMENT:
-- Near the end of the article, before the conclusion, include a "## Frequently Asked Questions"
-  section with 4-6 real questions a buyer would ask about "{chosen_keyword}", labeled Q1, Q2, Q3...
-  EVERY question must have its own complete 2-3 sentence answer in prose (not a table) - never
-  leave a question unanswered.
-
-MEDIA RULES:
-- Include exactly 4-5 image markers, each placed ONLY in a section where a photo genuinely fits
-  the surrounding text (e.g. illustrating a physical process like scanning, counting stock, or
-  reviewing a dashboard that the paragraph right before it is actually describing). Do not force
-  an image into a section whose content has nothing visual to show - pick the 4-5 sections across
-  the article that best lend themselves to a real photo.
-- Each [IMAGE: ...] description MUST be unique and describe the SPECIFIC scene relevant to the
-  section it appears in - never reuse the same wording twice, and never copy the example below
-  verbatim. Example only (write your own for each marker): [IMAGE: retail pharmacist checking inventory stock at counter]
-- Include 1 Mermaid flowchart: [DIAGRAM: flowchart LR; A[Received Order] --> B[Barcode POS Scan] --> C[Inventory Auto-Deduct]]
-- Spread these markers out, immediately after a relevant section's first paragraph. Never place
-  two or more markers back-to-back, and never stack them all at the end of the article.
-
-Output only the finished article content."""
+def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None, language="English", audience="", market="", links=""):
+    secondary = "\n".join(f'- {item["keyword"]}: approximately {item["count"]} mentions' for item in (secondary_keywords or []))
+    return f"""You are an editorial SEO writer. Create a useful, accurate Markdown article on any subject.
+Topic: {chosen_keyword}
+Title: {chosen_title or chosen_keyword}
+Language: {language}
+Audience: {audience or 'general readers'}
+Target market: {market or 'worldwide; do not assume a country'}
+Purpose: {blog_purpose or 'answer the reader’s search intent'}
+Questions: {audience_questions or 'address relevant reader questions'}
+Tone: {blog_tone}
+Secondary keywords (only when natural):
+{secondary}
+User-provided reference links:
+{links or 'None'}
+Start with a single H1 using the supplied title. Organise the article with useful H2/H3 sections, examples, and a conclusion. Aim for {MIN_WORD_COUNT} words when the subject warrants it; avoid filler and keyword stuffing.
+Adapt the structure to the topic. Add FAQs, tables, or steps only if useful. Do not invent statistics, citations, URLs, prices, legal requirements, or product claims. Use only supplied reference URLs and only where relevant; flag facts needing editorial verification.
+Use the requested language consistently. Include up to four unique [IMAGE: English description of a relevant real scene] markers where helpful, and an optional [DIAGRAM: flowchart LR; A[Start] --> B[Finish]] marker if a process benefits from it.
+Output only the article.""" 
 
 
 @app.route("/")
@@ -1270,7 +910,7 @@ def view_blog(filename):
     return render_template("blog.html", content=html_content)
 
 
-def get_fallback_trend_data():
+def get_fallback_trend_data(geo=""):
     return {
         "source": "unavailable",
         "searched_keyword": "",
@@ -1279,8 +919,7 @@ def get_fallback_trend_data():
         "region_data": [],
         "chart_labels": [],
         "chart_values": [],
-        "region_scope": "Pakistan",
-        "top_queries": [],
+        "region_scope": "top_queries": [],
         "rising_queries": []
     }
 
@@ -1388,8 +1027,8 @@ _TRENDS_USER_AGENTS = [
 ]
 
 
-def fetch_trends_data(searched_keyword, timeframe):
-    cache_key = (searched_keyword.casefold(), timeframe)
+def fetch_trends_data(searched_keyword, timeframe, geo=""):
+    cache_key = (searched_keyword.casefold(), timeframe, geo)
     cached = _TRENDS_CACHE.get(cache_key)
     if cached and time.time() - cached["timestamp"] < cached["ttl"]:
         if cached.get("error"):
@@ -1425,7 +1064,7 @@ def fetch_trends_data(searched_keyword, timeframe):
         pytrends = TrendReq(**trends_options)
 
         try:
-            trends_data = _query_google_trends(pytrends, searched_keyword, timeframe, "PK")
+            trends_data = _query_google_trends(pytrends, searched_keyword, timeframe, geo)
             interest_over_time = trends_data["interest_over_time"]
             region_data = trends_data["region_data"]
             chart_labels = interest_over_time["labels"]
@@ -1438,8 +1077,7 @@ def fetch_trends_data(searched_keyword, timeframe):
                 "chart_labels": chart_labels,
                 "chart_values": chart_values,
                 "region_data": region_data,
-                "region_scope": "Pakistan",
-                "top_queries": top_queries,
+                "region_scope": "top_queries": top_queries,
                 "rising_queries": rising_queries,
             }
             has_data = bool(chart_values or region_data or top_queries or rising_queries)
@@ -1471,6 +1109,10 @@ def api_trends():
     if not searched_keyword:
         return jsonify({"error": "Please enter a search term."}), 400
 
+    geo = request.args.get("geo", "").strip().upper()
+    if geo and not re.fullmatch(r"[A-Z]{2}", geo):
+        return jsonify({"error": "Use a two-letter country code or leave blank for worldwide."}), 400
+
     timeframe_options = {
         "7d": "now 7-d",
         "1m": "today 1-m",
@@ -1482,14 +1124,14 @@ def api_trends():
         return jsonify({"error": "Invalid timeframe. Use 7d, 1m, or 12m."}), 400
 
     try:
-        data = fetch_trends_data(searched_keyword, timeframe)
+        data = fetch_trends_data(searched_keyword, timeframe, geo)
         region_data = data["region_data"]
         top_queries = data["top_queries"]
         rising_queries = data["rising_queries"]
 
         has_data = bool(data["chart_values"] or region_data or top_queries or rising_queries)
         if not has_data:
-            fallback = get_fallback_trend_data()
+            fallback = get_fallback_trend_data(geo)
             fallback["searched_keyword"] = searched_keyword
             fallback["timeframe"] = timeframe_key
             return jsonify(fallback)
@@ -1508,7 +1150,7 @@ def api_trends():
         })
     except Exception as error:
         app.logger.warning("Google Trends request failed for %r: %s", searched_keyword, error)
-        fallback = get_fallback_trend_data()
+        fallback = get_fallback_trend_data(geo)
         fallback["searched_keyword"] = searched_keyword
         fallback["source"] = "rate-limited" if "429" in str(error) else "unavailable"
         response = jsonify(fallback)
@@ -1529,7 +1171,7 @@ def api_titles(keyword):
     primary_keywords = parse_primary_keywords(keyword)
 
     try:
-        prompt = build_title_prompt(keyword, primary_keywords, include_power_words)
+        prompt = build_title_prompt(keyword, primary_keywords, include_power_words, request.args.get("language", "English"), request.args.get("audience", ""))
         raw_text = generate_title_text(prompt, max_tokens=1200)
 
         ai_titles = extract_ai_title_candidates(raw_text)
@@ -1583,6 +1225,8 @@ def api_generate(keyword):
         })
     secondary_keywords = normalized_secondary_keywords
 
+    if not keyword:
+        return jsonify({"error": "Enter a topic or keyword."}), 400
     if os.path.exists(LAST_GEN_FILE):
         with open(LAST_GEN_FILE, "r") as f:
             last_time = float(f.read())
@@ -1595,7 +1239,7 @@ def api_generate(keyword):
         return jsonify({"error": f"Please wait {wait_left} more seconds before generating another blog."}), 429
 
     try:
-        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords)
+        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, request.args.get("language", "English"), request.args.get("audience", ""), request.args.get("market", ""), request.args.get("links", ""))
         raw_text = ""
 
         for attempt in range(3):
@@ -1604,21 +1248,13 @@ def api_generate(keyword):
             preview_word_count = len(body_preview.split())
             preview_density = keyword_density(body_preview, keyword)
 
-            if preview_word_count >= MIN_WORD_COUNT and 8.0 <= preview_density <= 10.0:
+            if preview_word_count >= MIN_WORD_COUNT or attempt == 2:
                 break
 
             feedback = []
             if preview_word_count < MIN_WORD_COUNT:
                 feedback.append(
                     f"The previous attempt was only about {preview_word_count} words. Expand every section to reach at least {MIN_WORD_COUNT} words."
-                )
-            if preview_density < 8.0:
-                feedback.append(
-                    f"Add relevant references to {keyword} until natural rate is 8-10 per 1,000 words."
-                )
-            elif preview_density > 10.0:
-                feedback.append(
-                    f"Replace unnecessary repetitions with natural synonyms until rate is 8-10 per 1,000 words."
                 )
             prompt += "\n\nRevise the complete article based on this quality feedback:\n- " + "\n- ".join(feedback)
 
@@ -1629,18 +1265,13 @@ def api_generate(keyword):
 
         # Structural, typographical, and natural linking passes
         body = ensure_h1_title(body, chosen_title)
-        body = fix_keyword_typos(body, keyword)
         body = collapse_duplicate_words(body)
 
-        internal_link = keyword_links.get(keyword, "https://example.com/pricing-plan/")
-        body = weave_natural_links(body, keyword, internal_link)
         body = clean_keyword_artifacts(body, keyword)
 
         body = distribute_media_markers(body)
         body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword)
         body = ensure_h1_title(body, chosen_title)
-        body = enforce_keyword_density(body, keyword)
-        body = enforce_secondary_keywords(body, secondary_keywords)
         body = clean_keyword_artifacts(body, keyword)
 
         word_count = len(body.split())

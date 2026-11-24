@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ExampleBrand — SEO Studio</title>
-<meta name="description" content="ExampleBrand SEO Studio: AI-powered blog generation for Pakistani businesses.">
+<title>SEO Studio</title>
+<meta name="description" content="SEO Studio SEO Studio: AI-powered blog generation for any topic and audience.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
@@ -579,7 +579,7 @@ select.field-input{padding-left:12px;cursor:pointer}
   <nav class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar-logo">
       Sada<span>Hisab</span>
-      <div class="sidebar-tagline">Pakistani business ERP, POS &amp; SEO</div>
+      <div class="sidebar-tagline">AI content and keyword research</div>
     </div>
 
     <button class="nav-item tab-btn active" data-tab="studio" onclick="switchTab('studio')" id="tab-btn-studio" aria-current="page">
@@ -633,7 +633,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             <div class="input-wrap">
               <span class="input-icon"><i data-lucide="heading" style="width:15px;height:15px" aria-hidden="true"></i></span>
               <input id="article-heading" type="text" class="field-input"
-                placeholder="How POS software helps bakeries reduce stock waste">
+                placeholder="How to start an indoor herb garden">
             </div>
           </div>
 
@@ -643,7 +643,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             <div class="input-wrap">
               <span class="input-icon"><i data-lucide="search" style="width:15px;height:15px" aria-hidden="true"></i></span>
               <input id="target-keyword" type="text" class="field-input"
-                placeholder="POS software for bakery">
+                placeholder="indoor herb gardening">
             </div>
           </div>
 
@@ -655,6 +655,10 @@ select.field-input{padding-left:12px;cursor:pointer}
             </select>
           </div>
 
+          <div class="field"><label for="article-language" class="field-label">Article language</label><input id="article-language" class="field-input no-icon" value="English" placeholder="e.g. Spanish"></div>
+          <div class="field"><label for="article-audience" class="field-label">Target audience</label><input id="article-audience" class="field-input no-icon" placeholder="e.g. beginners"></div>
+          <div class="field"><label for="article-market" class="field-label">Target market</label><input id="article-market" class="field-input no-icon" placeholder="Worldwide (optional)"></div>
+          <div class="field"><label for="article-links" class="field-label">Reference links (optional)</label><textarea id="article-links" class="field-input no-icon" placeholder="Paste relevant URLs, one per line"></textarea></div>
           <!-- Trending now -->
           <div class="field">
             <div class="field-label">Trending now</div>
@@ -866,8 +870,9 @@ select.field-input{padding-left:12px;cursor:pointer}
           <div class="input-wrap" style="flex:1;min-width:200px">
             <span class="input-icon"><i data-lucide="search" style="width:15px;height:15px" aria-hidden="true"></i></span>
             <input id="trend-search-input" type="text" class="field-input" style="min-height:40px"
-              placeholder="Enter keyword (e.g. POS Software, Pharmacy Management…)">
+              placeholder="Enter any search term (e.g. indoor gardening)">
           </div>
+          <input id="trend-geo" class="field-input no-icon" maxlength="2" style="width:130px" placeholder="Worldwide" aria-label="Country code (US, GB, IN, etc.)" title="Two-letter country code or blank for worldwide">
           <button onclick="queryBackendTrends()" class="btn btn-primary btn-sm">
             <i data-lucide="compass" style="width:15px;height:15px" aria-hidden="true"></i>
             Query live
@@ -909,7 +914,7 @@ select.field-input{padding-left:12px;cursor:pointer}
         <div class="screen-header">
           <div>
             <h1 class="screen-title">Keyword matrix</h1>
-            <div class="screen-desc">Direct URL routing for ExampleBrand landing pages and pricing plans.</div>
+            <div class="screen-desc">Explore topic ideas and use them in the article studio.</div>
           </div>
           <div class="input-wrap" style="width:220px">
             <span class="input-icon"><i data-lucide="search" style="width:14px;height:14px" aria-hidden="true"></i></span>
@@ -921,8 +926,8 @@ select.field-input{padding-left:12px;cursor:pointer}
             <thead>
               <tr>
                 <th style="width:40px">#</th>
-                <th>Keyword phrase &amp; landing target</th>
-                <th>Funnel type</th>
+                <th>Keyword phrase</th>
+                <th>Topic type</th>
                 <th style="text-align:right">Action</th>
               </tr>
             </thead>
@@ -981,20 +986,7 @@ select.field-input{padding-left:12px;cursor:pointer}
 ───────────────────────────────────── -->
 <script>
 /* ─── constants ─── */
-const PRICING_URL="https://example.com/pricing-plan/";
-const CONTACT_URL="https://example.com/contact-us/";
-const industryLinks={
-  "Restaurant":"https://example.com/industries/restaurant-pos-system-software/",
-  "Stationery Shop":"https://example.com/industries/best-pos-software-for-stationery-shops/",
-  "Auto Spare Parts":"https://example.com/industries/pos-software-for-auto-spare-parts/",
-  "Electronics Shop":"https://example.com/industries/pos-software-for-electronics-shop/",
-  "Gym":"https://example.com/industries/pos-software-for-gym/",
-  "Clothing Store":"https://example.com/industries/pos-software-for-clothing-store/",
-  "Wholesale Business":"https://example.com/industries/pos-software-for-wholesale-business/",
-  "Salon":"https://example.com/industries/pos-software-for-salon/",
-  "Grocery Store":"https://example.com/industries/pos-software-for-grocery-store/",
-  "Bakery":"https://example.com/industries/pos-software-for-bakery/"
-};
+
 
 /* ─── state ─── */
 let allKeywords=[];
@@ -1013,11 +1005,11 @@ let pendingConfirmAction=null;
 let sidebarCollapsed=false;
 let selectedTrendTimeframe='1m';
 
-try{savedBlogs=JSON.parse(localStorage.getItem('ExampleBrand_blogs')||'[]')}catch(e){savedBlogs=[]}
-try{hiddenServerFiles=JSON.parse(localStorage.getItem('ExampleBrand_hidden_files')||'[]')}catch(e){hiddenServerFiles=[]}
-try{currentTheme=localStorage.getItem('ExampleBrand_theme')||'light'}catch(e){}
-try{sidebarCollapsed=localStorage.getItem('ExampleBrand_sidebar_collapsed')==='1'}catch(e){}
-try{const s=localStorage.getItem('ExampleBrand_settings_open');if(s==='1')openSettings()}catch(e){}
+try{savedBlogs=JSON.parse(localStorage.getItem('seo_studio_blogs')||'[]')}catch(e){savedBlogs=[]}
+try{hiddenServerFiles=JSON.parse(localStorage.getItem('seo_studio_hidden_files')||'[]')}catch(e){hiddenServerFiles=[]}
+try{currentTheme=localStorage.getItem('seo_studio_theme')||'light'}catch(e){}
+try{sidebarCollapsed=localStorage.getItem('seo_studio_sidebar_collapsed')==='1'}catch(e){}
+try{const s=localStorage.getItem('seo_studio_settings_open');if(s==='1')openSettings()}catch(e){}
 
 /* ─── init ─── */
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1046,7 +1038,7 @@ function loadBackendPayloads(){
     const el=document.getElementById('server-keywords-data');
     if(el&&el.textContent.trim())allKeywords=JSON.parse(el.textContent);
   }catch(e){
-    allKeywords=["Pharmacy Management System in Rawalpindi","POS Software for Bakery","FBR Digital Invoicing System Software in Pakistan","POS Software for Restaurant","Pharmacy Management System in Lahore"];
+    allKeywords=[];
   }
 }
 
@@ -1062,7 +1054,7 @@ function initTheme(){
 }
 function toggleTheme(){
   currentTheme=currentTheme==='dark'?'light':'dark';
-  try{localStorage.setItem('ExampleBrand_theme',currentTheme)}catch(e){}
+  try{localStorage.setItem('seo_studio_theme',currentTheme)}catch(e){}
   initTheme();
 }
 
@@ -1070,7 +1062,7 @@ function toggleTheme(){
 function toggleSidebar(){
   sidebarCollapsed=!sidebarCollapsed;
   applySidebarCollapse();
-  try{localStorage.setItem('ExampleBrand_sidebar_collapsed',sidebarCollapsed?'1':'0')}catch(e){}
+  try{localStorage.setItem('seo_studio_sidebar_collapsed',sidebarCollapsed?'1':'0')}catch(e){}
 }
 function applySidebarCollapse(){
   const sb=document.getElementById('sidebar');
@@ -1123,7 +1115,7 @@ function toggleSettings(){
   const isOpen=body.classList.toggle('open');
   btn.classList.toggle('open',isOpen);
   btn.setAttribute('aria-expanded',isOpen.toString());
-  try{localStorage.setItem('ExampleBrand_settings_open',isOpen?'1':'0')}catch(e){}
+  try{localStorage.setItem('seo_studio_settings_open',isOpen?'1':'0')}catch(e){}
   lucide.createIcons();
 }
 function openSettings(){
@@ -1204,7 +1196,7 @@ async function loadDraftFromServer(filename){
       preview:(data.content.substring(0,180))+'…'
     };
     savedBlogs.unshift(blog);
-    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
     updateHeaderCounters();
 
     rawBlogContent=blog.content;
@@ -1459,7 +1451,7 @@ async function fetchTitleOptions(){
   setOutputState('brainstorm');
 
   try{
-    const res=await fetch('/api/titles/'+encodeURIComponent(kw)+'?power_words='+encodeURIComponent(powerWordsMode));
+    const res=await fetch('/api/titles/'+encodeURIComponent(kw)+'?power_words='+encodeURIComponent(powerWordsMode)+'&language='+encodeURIComponent(document.getElementById('article-language').value)+'&audience='+encodeURIComponent(document.getElementById('article-audience').value));
     const data=await readApiResponse(res);
     if(!res.ok)throw new Error(data.error||'Title generation failed');
     if(data.titles&&data.titles.length){
@@ -1550,6 +1542,7 @@ async function generateArticle(){
   const heading=document.getElementById('article-heading').value.trim();
   if(heading||selectedH1Title)params.set('title',heading||selectedH1Title);
   params.set('primary_keyword',kw);
+  for(const key of ['language','audience','market','links']){params.set(key,document.getElementById('article-'+key).value.trim());}
   const sec=getSecondaryKeywords();
   if(sec.length)params.set('secondary_keywords',JSON.stringify(sec));
   const purpose=document.getElementById('blog-purpose').value.trim();
@@ -1580,8 +1573,8 @@ async function generateArticle(){
     };
     savedBlogs.unshift(newPost);
     hiddenServerFiles=hiddenServerFiles.filter(f=>f!==newPost.filename);
-    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
-    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
     updateHeaderCounters();
 
     const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
@@ -1759,7 +1752,7 @@ async function queryBackendTrends(){
   if(!kw){showToast('Enter a keyword first','warning');return;}
   badge.textContent='Fetching…';
   try{
-    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe='+selectedTrendTimeframe+'&fresh=1');
+    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe='+selectedTrendTimeframe+'&fresh=1&geo='+encodeURIComponent(document.getElementById('trend-geo').value.trim()));
     const data=await res.json();
     const labels=data.chart_labels||data.interest_over_time?.labels||[];
     const values=data.chart_values||data.interest_over_time?.values||[];
@@ -1773,7 +1766,7 @@ async function queryBackendTrends(){
       badge.textContent='No data';
     }else{
       chart.style.display='block';empty.style.display='none';
-      badge.textContent=data.region_scope?.startsWith('Pakistan')?'Google Trends · Pakistan':'PyTrends · '+data.source;
+      badge.textContent='Google Trends · '+(data.region_scope||'Worldwide');
       renderTrendsChart(labels,values);
     }
     const noMsg='<p style="font-size:13px;color:var(--muted);padding:6px 0">No data returned.</p>';
@@ -1818,9 +1811,9 @@ function renderKeywordsTable(list){
       <td style="color:var(--muted);font-family:var(--mono);font-size:12px">${idx+1}</td>
       <td>
         <div style="font-weight:500">${kw}</div>
-        <a href="${PRICING_URL}" target="_blank" rel="noopener" style="font-size:11px;font-family:var(--mono);color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${PRICING_URL}</a>
+
       </td>
-      <td><span style="padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;background:${isIndustry?'var(--accent-soft)':'var(--surface-2)'};color:${isIndustry?'var(--accent)':'var(--muted)'};border:1px solid var(--border)">${isIndustry?'Industry funnel':'Pricing destination'}</span></td>
+      <td><span style="padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;background:${isIndustry?'var(--accent-soft)':'var(--surface-2)'};color:${isIndustry?'var(--accent)':'var(--muted)'};border:1px solid var(--border)">${isIndustry?'Specific topic':'General topic'}</span></td>
       <td style="text-align:right"><button onclick="setKeyword('${kw.replace(/'/g,"\\'")}');switchTab('studio')" class="btn btn-secondary btn-sm">Use in Studio</button></td>`;
     tbody.appendChild(tr);
   });
@@ -1886,8 +1879,8 @@ function requestDeleteBlog(filename){
   pendingConfirmAction=()=>{
     savedBlogs=savedBlogs.filter(b=>b.filename!==filename);
     if(serverFiles.includes(filename)&&!hiddenServerFiles.includes(filename))hiddenServerFiles.push(filename);
-    try{localStorage.setItem('ExampleBrand_blogs',JSON.stringify(savedBlogs))}catch(e){}
-    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
     renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Article removed');
   };
   document.getElementById('confirm-modal').classList.add('open');
@@ -1896,8 +1889,8 @@ function requestClearLibrary(){
   document.getElementById('confirm-modal-msg').textContent='Clear all articles from the browser library?';
   pendingConfirmAction=()=>{
     savedBlogs=[];hiddenServerFiles=[...new Set([...hiddenServerFiles,...serverFiles])];
-    try{localStorage.removeItem('ExampleBrand_blogs')}catch(e){}
-    try{localStorage.setItem('ExampleBrand_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.removeItem('seo_studio_blogs')}catch(e){}
+    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
     renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Library cleared');
   };
   document.getElementById('confirm-modal').classList.add('open');
