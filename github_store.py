@@ -10,8 +10,7 @@ That's why blogs "disappear" and why env vars are the only thing that
 reliably survives a redeploy.
 
 This module provides persistent file storage:
-instead of relying on local disk, generated blogs (and, optionally, the
-API keys that used to live only in Vercel's env var screen) are saved as
+instead of relying on local disk, generated blogs are saved as
 files in a GitHub repo via the Contents API. GitHub is the "disk".
 
 Only two real env vars are needed to bootstrap this:
@@ -123,30 +122,3 @@ def list_dir(path):
     return [item["name"] for item in resp.json() if item["type"] == "file"]
 
 
-# ---------------------------------------------------------------------------
-# Settings-in-repo: replaces having to re-set GROQ_API_KEY / PEXELS_API_KEY
-# in Vercel's Environment Variables screen every time they change or fail
-# to get picked up. They're read from/written to settings.json in the same
-# datastore repo instead.
-# ---------------------------------------------------------------------------
-
-SETTINGS_PATH = "settings.json"
-
-
-def load_settings():
-    """Returns a dict of settings from settings.json in the repo, or {}."""
-    content, _ = get_file(SETTINGS_PATH)
-    if content is None:
-        return {}
-    try:
-        return json.loads(content)
-    except ValueError:
-        return {}
-
-
-def save_settings(updates):
-    """Merges `updates` into settings.json in the repo and saves it."""
-    current = load_settings()
-    current.update(updates)
-    save_file(SETTINGS_PATH, json.dumps(current, indent=2), "Update settings")
-    return current

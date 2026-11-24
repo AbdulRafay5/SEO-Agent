@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -988,6 +989,8 @@ select.field-input{padding-left:12px;cursor:pointer}
 /* ─── constants ─── */
 
 
+function safeMarkdown(value){return DOMPurify.sanitize(marked.parse(value));}
+
 /* ─── state ─── */
 let allKeywords=[];
 let serverFiles=[];
@@ -1171,7 +1174,7 @@ function openDraft(filename){
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
-  document.getElementById('markdown-rendered-view').innerHTML=marked.parse(blog.content);
+  document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
   document.getElementById('markdown-raw-view').value=blog.content;
   document.getElementById('target-keyword').value=blog.keyword||'';
   setOutputState('rendered');
@@ -1200,7 +1203,7 @@ async function loadDraftFromServer(filename){
     updateHeaderCounters();
 
     rawBlogContent=blog.content;
-    document.getElementById('markdown-rendered-view').innerHTML=marked.parse(blog.content);
+    document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
     document.getElementById('markdown-raw-view').value=blog.content;
     document.getElementById('target-keyword').value=blog.keyword||'';
     setOutputState('rendered');
@@ -1549,11 +1552,12 @@ async function generateArticle(){
   const tone=document.getElementById('blog-tone').value;
   if(purpose)params.set('purpose',purpose);
   if(tone)params.set('tone',tone);
-  const q=params.toString();
-  const url='/api/generate/'+encodeURIComponent(kw)+(q?'?'+q:'');
+  const payload=Object.fromEntries(params);
+  payload.secondary_keywords=sec;
+  const url='/api/generate';
 
   try{
-    const response=await fetch(url);
+    const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await readApiResponse(response);
     if(response.status===429){triggerCooldown(data.error||'Cooldown active.');throw new Error(data.error);}
     if(!response.ok)throw new Error(data.error||'Generation failed. Try again.');
@@ -1580,7 +1584,7 @@ async function generateArticle(){
     const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
     rawBlogContent=normalized;
     newPost.content=normalized;
-    document.getElementById('markdown-rendered-view').innerHTML=marked.parse(normalized);
+    document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(normalized);
     document.getElementById('markdown-raw-view').value=normalized;
     setOutputState('rendered');
     setEditorTab('rendered');
@@ -1636,7 +1640,7 @@ function toggleEditorMode(mode){
   const raw=document.getElementById('markdown-raw-view');
   setEditorTab(mode);
   if(mode==='rendered'){
-    if(raw.value){rawBlogContent=raw.value;rendered.innerHTML=marked.parse(rawBlogContent);}
+    if(raw.value){rawBlogContent=raw.value;rendered.innerHTML=safeMarkdown(rawBlogContent);}
     setOutputState('rendered');
   }else{
     raw.value=rawBlogContent;
@@ -1651,7 +1655,7 @@ function copyCurrentContent(){
   // Render the markdown to real HTML so pasting into WordPress, Google Docs,
   // Gmail, Word etc. keeps headings/bold/links/images instead of dumping
   // literal '#'/'**'/'![]()' markdown syntax as plain text.
-  const html=marked.parse(rawBlogContent);
+  const html=safeMarkdown(rawBlogContent);
 
   if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
     const htmlBlob=new Blob([html],{type:'text/html'});

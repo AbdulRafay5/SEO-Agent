@@ -11,6 +11,9 @@ import base64
 import difflib
 import json
 import requests
+import bleach
+from urllib.parse import urlsplit
+from threading import Lock
 from google import genai
 from groq import Groq
 from pytrends.request import TrendReq
@@ -18,6 +21,8 @@ from keywords import all_keywords
 import github_store
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024
+_generation_lock = Lock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOTENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -64,30 +69,23 @@ def _upsert_manifest_entry(entry):
         github_store.save_file(
             MANIFEST_PATH,
             json.dumps(manifest, indent=2),
-            message=f"Update manifest: {entry.get('keyword', entry['filename'])}",
+            message="Update article index",
         )
     except Exception:
         app.logger.exception("Failed to update GitHub manifest for %s", entry.get("filename"))
 
 
-_repo_settings = github_store.load_settings()
-gemini_key = os.getenv("GEMINI_API_KEY") or dotenv_settings.get("GEMINI_API_KEY")
-groq_key = _repo_settings.get("groqApiKey") or os.getenv("GROQ_API_KEY") or dotenv_settings.get("GROQ_API_KEY")
-qwen_key = os.getenv("QWEN_API_KEY") or dotenv_settings.get("QWEN_API_KEY")
-pexels_key = (
-    _repo_settings.get("pexelsApiKey")
-    or _repo_settings.get("PEXELS_API_KEY")
-    or os.getenv("PEXELS_API_KEY")
-    or dotenv_settings.get("PEXELS_API_KEY")
-    or ""
-).strip()
+gemini_key = os.getenv("GEMINI_API_KEY")
+groq_key = os.getenv("GROQ_API_KEY")
+qwen_key = os.getenv("QWEN_API_KEY")
+pexels_key = os.getenv("PEXELS_API_KEY", "").strip()
 
 gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 client = Groq(api_key=groq_key) if groq_key else None
 qwen_client = Groq(api_key=qwen_key) if qwen_key else None
-GEMINI_MODEL = "gemini-2.5-flash"
-GROQ_MODEL = "openai/gpt-oss-120b"
-QWEN_TITLE_MODEL = "qwen/qwen3.8-27b"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+QWEN_TITLE_MODEL = os.getenv("QWEN_TITLE_MODEL", "qwen/qwen3-32b")
 
 POWER_WORDS = [
     "Best", "Top", "Easy", "Simple", "Proven", "Smart", "Quick", "Complete",
@@ -130,7 +128,7 @@ def generate_title_text(prompt, max_tokens):
                 max_tokens=max_tokens,
             )
             message = response.choices[0].message
-            text = (message.content or getattr(message, "reasoning", "") or "").strip()
+            text = (message.content or "").strip()
             if text:
                 return text
             raise RuntimeError("Qwen returned an empty response")
@@ -197,10 +195,9 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
 
 
 def get_pexels_image(query, primary_keyword="", section_context="", used_urls=None):
-    fallback_image = "https://picsum.photos/1200/800"
     used_urls = used_urls if used_urls is not None else set()
     if not pexels_key:
-        return fallback_image
+        return None
 
     def first_unused(photos):
         for photo in photos:
@@ -248,7 +245,7 @@ def get_pexels_image(query, primary_keyword="", section_context="", used_urls=No
     except Exception:
         pass
 
-    return fallback_image
+    return None
 
 
 def get_mermaid_diagram(diagram_code):
@@ -353,6 +350,9 @@ def replace_image_markers(blog_text, primary_keyword=""):
         position = blog_text.find(full_match)
         section_context = get_nearest_heading(blog_text, position) if position != -1 else ""
         image_url = get_pexels_image(description, primary_keyword, section_context, used_urls)
+        if not image_url:
+            blog_text = blog_text.replace(full_match, "", 1)
+            continue
         used_urls.add(image_url)
         clean_caption = re.sub(r"[\[\]]", "", description).strip()
         markdown_image = f"\n\n![{clean_caption}]({image_url})\n\n"
@@ -363,7 +363,7 @@ def replace_image_markers(blog_text, primary_keyword=""):
         markdown_image = f"\n\n![Process diagram]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
 
-    return blog_text, len(image_blocks), len(diagram_blocks)
+    return blog_text, len(used_urls), len(diagram_blocks)
 
 
 def correct_keyword_input(keyword):
@@ -722,7 +722,7 @@ Output only the article."""
 def home():
     local_files = set(_safe_listdir(BUNDLED_BLOGS_FOLDER) + _safe_listdir(BLOGS_FOLDER))
     repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
-    files = sorted(local_files | repo_files)
+    files = sorted(f for f in local_files | repo_files if f.endswith(".md"))
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
 
@@ -730,7 +730,7 @@ def home():
 @app.route("/api/blog/<filename>")
 def api_get_blog(filename):
     safe_filename = os.path.basename(filename)
-    if safe_filename != filename:
+    if safe_filename != filename or not filename.endswith(".md"):
         abort(404)
 
     runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
@@ -762,7 +762,7 @@ def api_get_blog(filename):
 def view_blog(filename):
     import markdown
     safe_filename = os.path.basename(filename)
-    if safe_filename != filename:
+    if safe_filename != filename or not filename.endswith(".md"):
         abort(404)
 
     runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
@@ -779,7 +779,7 @@ def view_blog(filename):
         if raw_text is None:
             abort(404)
 
-    html_content = markdown.markdown(raw_text, extensions=["tables"])
+    html_content = bleach.clean(markdown.markdown(raw_text, extensions=["tables"]), tags={"p", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "ul", "ol", "li", "strong", "em", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td", "hr", "br"}, attributes={"a": ["href", "title"], "img": ["src", "alt", "title"]}, protocols={"http", "https", "mailto"}, strip=True)
     return render_template("blog.html", content=html_content)
 
 
@@ -1075,36 +1075,65 @@ def api_titles(keyword):
         })
 
 
-@app.route("/api/generate/<path:keyword>")
-def api_generate(keyword):
-    keyword = unquote_plus(request.args.get("primary_keyword", keyword) or "").strip()
-    chosen_title = request.args.get("title")
-    blog_purpose = request.args.get("purpose", "")
-    audience_questions = request.args.get("questions", "")
-    blog_tone = request.args.get("tone", "professional")
-    try:
-        secondary_keywords = json.loads(request.args.get("secondary_keywords", "[]"))
-    except json.JSONDecodeError:
-        secondary_keywords = []
-    normalized_secondary_keywords = []
-    for item in secondary_keywords:
-        if not isinstance(item, dict) or not str(item.get("keyword", "")).strip():
-            continue
-        try:
-            count = int(item.get("count", 1))
-        except (TypeError, ValueError):
-            count = 1
-        normalized_secondary_keywords.append({
-            "keyword": str(item["keyword"]).strip(),
-            "count": max(1, min(5, count)),
-        })
-    secondary_keywords = normalized_secondary_keywords
-
+@app.post("/api/generate")
+def api_generate():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    limits = {"primary_keyword": 240, "title": 300, "purpose": 3000,
+              "questions": 3000, "tone": 40, "language": 80,
+              "audience": 300, "market": 100, "links": 4000}
+    for field, limit in limits.items():
+        value = data.get(field, "")
+        if not isinstance(value, str) or len(value) > limit:
+            return jsonify({"error": f"Invalid {field} (maximum {limit} characters)."}), 400
+    keyword = data.get("primary_keyword", "").strip()
     if not keyword:
         return jsonify({"error": "Enter a topic or keyword."}), 400
+    chosen_title = data.get("title", "").strip() or None
+    blog_purpose = data.get("purpose", "")
+    audience_questions = data.get("questions", "")
+    blog_tone = data.get("tone", "professional")
+    if blog_tone not in {"professional", "conversational", "informal"}:
+        return jsonify({"error": "Invalid writing tone."}), 400
+    links = data.get("links", "")
+    for link in links.splitlines():
+        if link.strip():
+            try:
+                parsed = urlsplit(link.strip())
+                valid = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+            except ValueError:
+                valid = False
+            if not valid:
+                return jsonify({"error": "Reference links must be HTTP or HTTPS URLs, one per line."}), 400
+    secondary_keywords = data.get("secondary_keywords", [])
+    if not isinstance(secondary_keywords, list) or len(secondary_keywords) > 20:
+        return jsonify({"error": "Provide at most 20 secondary keywords."}), 400
+    normalized = []
+    for item in secondary_keywords:
+        if not isinstance(item, dict) or not isinstance(item.get("keyword"), str) or not item["keyword"].strip() or len(item["keyword"]) > 240:
+            return jsonify({"error": "Invalid secondary keyword."}), 400
+        count = item.get("count", 1)
+        if type(count) is not int or not 1 <= count <= 10:
+            return jsonify({"error": "Secondary keyword count must be between 1 and 10."}), 400
+        normalized.append({"keyword": item["keyword"].strip(), "count": count})
+    if not gemini_client and not client:
+        return jsonify({"error": "No AI provider configured. Set GEMINI_API_KEY or GROQ_API_KEY."}), 503
+    if not _generation_lock.acquire(blocking=False):
+        return jsonify({"error": "An article is already being generated."}), 429
+    try:
+        return _generate_article(data, keyword, chosen_title, blog_purpose, audience_questions, blog_tone, normalized)
+    finally:
+        _generation_lock.release()
+
+
+def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords):
     if os.path.exists(LAST_GEN_FILE):
-        with open(LAST_GEN_FILE, "r") as f:
-            last_time = float(f.read())
+        try:
+            with open(LAST_GEN_FILE, "r") as f:
+                last_time = float(f.read())
+        except (OSError, ValueError):
+            last_time = 0
     else:
         last_time = 0
 
@@ -1114,11 +1143,13 @@ def api_generate(keyword):
         return jsonify({"error": f"Please wait {wait_left} more seconds before generating another blog."}), 429
 
     try:
-        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, request.args.get("language", "English"), request.args.get("audience", ""), request.args.get("market", ""), request.args.get("links", ""))
+        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""))
         raw_text = ""
 
         for attempt in range(3):
             raw_text = generate_ai_text(prompt, max_tokens=4000)
+            if not raw_text or not raw_text.strip():
+                raise RuntimeError("AI provider returned an empty article.")
             body_preview = clean_keyword_artifacts(raw_text.strip(), keyword)
             preview_word_count = len(body_preview.split())
 
@@ -1164,7 +1195,7 @@ def api_generate(keyword):
             github_store.save_file(
                 f"{DRAFTS_REPO_DIR}/{safe_filename}",
                 body,
-                message=f"Generate draft: {keyword}",
+                message="Save article draft",
             )
             _upsert_manifest_entry({
                 "filename": safe_filename,
@@ -1200,8 +1231,9 @@ def api_generate(keyword):
         error_text = str(e)
         if "rate_limit" in error_text.lower() or "429" in error_text:
             return jsonify({"error": "Daily/rate limit reached on the AI service. Wait a bit and try again, or check your Groq dashboard for reset time."}), 429
-        return jsonify({"error": error_text}), 500
+        app.logger.exception("Article generation failed")
+        return jsonify({"error": "Article generation failed. Check provider configuration and try again."}), 502
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=os.getenv("FLASK_DEBUG") == "1")

@@ -7,3 +7,5 @@ groq
 pytrends
 Markdown
 urllib3<2
+
+bleach>=6.2,<7
