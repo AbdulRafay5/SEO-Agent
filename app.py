@@ -781,10 +781,21 @@ MEDIA
 Output only the finished Markdown article."""
 
 
+def guest_mode():
+    return os.getenv("SEO_GUEST_MODE", "").strip() == "1"
+
+
 @app.before_request
 def protect_owner_workspace():
     """Optional single-owner gate for the existing shared workspace."""
     enabled = os.getenv("SEO_OWNER_AUTH", "").strip().lower()
+    if guest_mode():
+        # Guest deployments are separate from the private owner deployment.
+        # Refuse ambiguous configuration rather than expose the owner workspace.
+        if enabled not in {"", "0", "false", "off"}:
+            return Response("Guest and owner modes cannot be enabled together.", status=503,
+                            headers={"Cache-Control": "no-store"})
+        return None
     if enabled in {"", "0", "false", "off"}:
         return None
     username = os.getenv("SEO_OWNER_USERNAME", "")
@@ -806,7 +817,7 @@ def protect_owner_workspace():
 
 @app.after_request
 def prevent_private_response_caching(response):
-    if os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"", "0", "false", "off"}:
+    if guest_mode() or os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"", "0", "false", "off"}:
         response.headers["Cache-Control"] = "private, no-store"
         response.vary.add("Authorization")
     return response
@@ -820,6 +831,9 @@ def remote_version_saving_enabled():
 
 @app.route("/")
 def home():
+    if guest_mode():
+        return render_template("index.html", files=[], keywords=all_keywords, file_meta={},
+                               remote_versions_enabled=False, guest_workspace=True)
     local_files = set(_safe_listdir(BUNDLED_BLOGS_FOLDER) + _safe_listdir(BLOGS_FOLDER))
     try:
         repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
@@ -829,7 +843,7 @@ def home():
     files = sorted(f for f in local_files | repo_files if f.endswith(".md"))
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta,
-                           remote_versions_enabled=remote_version_saving_enabled())
+                           remote_versions_enabled=remote_version_saving_enabled(), guest_workspace=False)
 
 
 @app.post("/api/blog/versions")
@@ -917,6 +931,8 @@ def load_remote_evidence(filename, body):
 
 @app.route("/api/blog/<filename>")
 def api_get_blog(filename):
+    if guest_mode():
+        abort(404)
     safe_filename = os.path.basename(filename)
     if safe_filename != filename or not filename.endswith(".md"):
         abort(404)
@@ -955,6 +971,8 @@ def api_get_blog(filename):
 
 @app.route("/blog/<filename>")
 def view_blog(filename):
+    if guest_mode():
+        abort(404)
     import markdown
     safe_filename = os.path.basename(filename)
     if safe_filename != filename or not filename.endswith(".md"):
@@ -1623,20 +1641,22 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         meta_description = (first_paragraph[:157].rsplit(" ", 1)[0] + "...") if len(first_paragraph) > 160 else first_paragraph
 
         safe_filename = create_unique_blog_filename(keyword, chosen_title or meta_title)
-        filepath = os.path.join(BLOGS_FOLDER, safe_filename)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(body)
+        if not guest_mode():
+            filepath = os.path.join(BLOGS_FOLDER, safe_filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(body)
 
         evidence_result = {"method": evidence_method, "passages": evidence,
                            "citations": citation_report(body, evidence),
                            "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"}
         storage = {"article_saved": False, "metadata_saved": False, "evidence_saved": False,
-                   "remote_configured": github_store._configured(),
+                   "remote_configured": not guest_mode() and github_store._configured(),
                    "evidence_enabled": remote_evidence_enabled()}
         try:
-            storage["article_saved"] = bool(github_store.save_file(
-                f"{DRAFTS_REPO_DIR}/{safe_filename}", body,
-                message="Save article draft", expected_sha=None))
+            if not guest_mode():
+                storage["article_saved"] = bool(github_store.save_file(
+                    f"{DRAFTS_REPO_DIR}/{safe_filename}", body,
+                    message="Save article draft", expected_sha=None))
             if storage["article_saved"]:
                 storage["metadata_saved"] = bool(_upsert_manifest_entry({
                     "filename": safe_filename, "keyword": keyword, "wordCount": word_count,

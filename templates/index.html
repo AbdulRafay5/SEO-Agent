@@ -1098,11 +1098,15 @@ let pendingConfirmAction=null;
 let sidebarCollapsed=false;
 let selectedTrendTimeframe='1m';
 
+const guestWorkspace={{ guest_workspace|default(false)|tojson }};
+const draftStorageKey=guestWorkspace?'seo_studio_guest_blogs':'seo_studio_blogs';
+const hiddenStorageKey=guestWorkspace?'seo_studio_guest_hidden_files':'seo_studio_hidden_files';
 // Migrate a single recognizable previous studio namespace on the same origin.
 function migratePreviousStudioStorage(){
+  if(guestWorkspace)return;
   try{
     const current='seo_studio';
-    const prefixes=Object.keys(localStorage).filter(k=>k.endsWith('_blogs')).map(k=>k.slice(0,-6)).filter(p=>p!==current&&localStorage.getItem(p+'_hidden_files')!==null&&localStorage.getItem(p+'_theme')!==null);
+    const prefixes=Object.keys(localStorage).filter(k=>k.endsWith('_blogs')).map(k=>k.slice(0,-6)).filter(p=>p!==current&&p!=='seo_studio_guest'&&localStorage.getItem(p+'_hidden_files')!==null&&localStorage.getItem(p+'_theme')!==null);
     if(prefixes.length!==1)return;
     const prefix=prefixes[0];
     for(const suffix of ['blogs','hidden_files','theme','sidebar_collapsed','settings_open']){
@@ -1121,8 +1125,8 @@ function migratePreviousStudioStorage(){
   }catch(e){}
 }
 migratePreviousStudioStorage();
-try{savedBlogs=JSON.parse(localStorage.getItem('seo_studio_blogs')||'[]');if(!Array.isArray(savedBlogs))savedBlogs=[]}catch(e){savedBlogs=[]}
-try{hiddenServerFiles=JSON.parse(localStorage.getItem('seo_studio_hidden_files')||'[]');if(!Array.isArray(hiddenServerFiles))hiddenServerFiles=[]}catch(e){hiddenServerFiles=[]}
+try{savedBlogs=JSON.parse(localStorage.getItem(draftStorageKey)||'[]');if(!Array.isArray(savedBlogs))savedBlogs=[]}catch(e){savedBlogs=[]}
+try{hiddenServerFiles=JSON.parse(localStorage.getItem(hiddenStorageKey)||'[]');if(!Array.isArray(hiddenServerFiles))hiddenServerFiles=[]}catch(e){hiddenServerFiles=[]}
 try{currentTheme=localStorage.getItem('seo_studio_theme')||'light'}catch(e){}
 try{sidebarCollapsed=localStorage.getItem('seo_studio_sidebar_collapsed')==='1'}catch(e){}
 try{const s=localStorage.getItem('seo_studio_settings_open');if(s==='1')openSettings()}catch(e){}
@@ -1321,7 +1325,7 @@ async function loadDraftFromServer(filename){
     };
     savedBlogs=savedBlogs.filter(item=>item.filename!==blog.filename);
     savedBlogs.unshift(blog);
-    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){showToast('Article opened but browser storage is unavailable.','warning');}
+    try{localStorage.setItem(draftStorageKey,JSON.stringify(savedBlogs))}catch(e){showToast('Article opened but browser storage is unavailable.','warning');}
     updateHeaderCounters();
     restoreDraftEvidence(blog.evidence);
 
@@ -1733,8 +1737,8 @@ async function generateArticle(){
     savedBlogs.unshift(newPost);
     hiddenServerFiles=hiddenServerFiles.filter(f=>f!==newPost.filename);
     let draftSaved=true;
-    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){draftSaved=false;}
-    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.setItem(draftStorageKey,JSON.stringify(savedBlogs))}catch(e){draftSaved=false;}
+    try{localStorage.setItem(hiddenStorageKey,JSON.stringify(hiddenServerFiles))}catch(e){}
     updateHeaderCounters();
 
     rawBlogContent=normalized;
@@ -1896,7 +1900,7 @@ function saveWorkspaceVersion(){
   const filename='version_'+id+'.md';
   const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
   const next=[version,...savedBlogs];
-  try{localStorage.setItem('seo_studio_blogs',JSON.stringify(next));}
+  try{localStorage.setItem(draftStorageKey,JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
   savedBlogs=next;currentDraftFilename=filename;
   updateHeaderCounters();renderRecentDrafts();
@@ -2151,7 +2155,7 @@ function addEvidenceSource(entry=null){
 function readEvidenceSources(){
   return [...document.getElementById('evidence-inputs').children].map(row=>({title:row.querySelector('[data-evidence-title]').value.trim(),url:row.querySelector('[data-evidence-url]').value.trim(),text:row.querySelector('[data-evidence-text]').value.trim(),kind:row.querySelector('[data-evidence-kind]').value})).filter(source=>source.title||source.url||source.text);
 }
-const knowledgeKey='seo_studio_evidence_library_v1';
+const knowledgeKey=guestWorkspace?'seo_studio_guest_evidence_library_v1':'seo_studio_evidence_library_v1';
 function readKnowledgeLibrary(){
   const raw=localStorage.getItem(knowledgeKey);
   if(raw===null)return [];
@@ -2395,8 +2399,8 @@ function requestDeleteBlog(filename){
   pendingConfirmAction=()=>{
     savedBlogs=savedBlogs.filter(b=>b.filename!==filename);
     if(serverFiles.includes(filename)&&!hiddenServerFiles.includes(filename))hiddenServerFiles.push(filename);
-    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
-    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.setItem(draftStorageKey,JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem(hiddenStorageKey,JSON.stringify(hiddenServerFiles))}catch(e){}
     renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Article removed');
   };
   document.getElementById('confirm-modal').classList.add('open');
@@ -2405,8 +2409,8 @@ function requestClearLibrary(){
   document.getElementById('confirm-modal-msg').textContent='Clear all articles from the browser library?';
   pendingConfirmAction=()=>{
     savedBlogs=[];hiddenServerFiles=[...new Set([...hiddenServerFiles,...serverFiles])];
-    try{localStorage.removeItem('seo_studio_blogs')}catch(e){}
-    try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
+    try{localStorage.removeItem(draftStorageKey)}catch(e){}
+    try{localStorage.setItem(hiddenStorageKey,JSON.stringify(hiddenServerFiles))}catch(e){}
     renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Library cleared');
   };
   document.getElementById('confirm-modal').classList.add('open');
