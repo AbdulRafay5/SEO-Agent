@@ -45,3 +45,7 @@ Open a generated article or saved draft, click Revise, select a Markdown section
 ### Saving revisions
 
 Save version creates a separate browser-local copy of the current article, including manual Markdown changes and the optional meta description. It does not overwrite server drafts or publish any data. Versions survive reloads on the same browser and origin, but are not synchronized across devices. Download important versions for backup. If browser storage is unavailable the editor reports the failure instead of claiming a save.
+
+## Optional owner-only access
+
+The existing workspace is single-owner, not multi-tenant. To protect a private deployment, set `SEO_OWNER_AUTH=1`, `SEO_OWNER_USERNAME` and a strong unique `SEO_OWNER_PASSWORD` in the deployment environment. Use HTTPS only (localhost HTTP is for development). The browser prompts for credentials using HTTP Basic authentication. All application routes require credentials while this mode is enabled, including draft access and AI requests. Missing credentials in enabled mode fail closed. Authentication is off by default to preserve existing local workflows. Browser-managed credentials may persist until the browser session is closed; there is no application logout or account registration. This is not a substitute for multi-user storage isolation or distributed request limits. Keep the datastore private and do not use shared browser profiles for confidential drafts. Never commit passwords. Redeploy after changing Vercel environment variables.

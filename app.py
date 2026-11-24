@@ -1,4 +1,5 @@
-from flask import Flask, abort, render_template, jsonify, request
+from flask import Flask, abort, render_template, jsonify, request, Response
+from hmac import compare_digest
 from dotenv import dotenv_values, load_dotenv
 from datetime import date
 from urllib.parse import unquote_plus
@@ -727,6 +728,37 @@ Start with a single H1 using the supplied title. Organise the article with usefu
 Adapt the structure to the topic. Add FAQs, tables, or steps only if useful. Do not invent statistics, citations, URLs, prices, legal requirements, or product claims. Use only supplied reference URLs and only where relevant; flag facts needing editorial verification.
 Use the requested language consistently. Include up to four unique [IMAGE: English description of a relevant real scene] markers where helpful, and an optional [DIAGRAM: flowchart LR; A[Start] --> B[Finish]] marker if a process benefits from it.
 Output only the article.""" 
+
+
+@app.before_request
+def protect_owner_workspace():
+    """Optional single-owner gate for the existing shared workspace."""
+    enabled = os.getenv("SEO_OWNER_AUTH", "").strip().lower()
+    if enabled in {"", "0", "false", "off"}:
+        return None
+    username = os.getenv("SEO_OWNER_USERNAME", "")
+    password = os.getenv("SEO_OWNER_PASSWORD", "")
+    if enabled not in {"1", "true", "on"} or not username or not password:
+        return Response("Owner authentication is not configured correctly.", status=503,
+                        headers={"Cache-Control": "no-store"})
+    credentials = request.authorization
+    if credentials and credentials.type.lower() == "basic":
+        valid_user = compare_digest((credentials.username or "").encode("utf-8"), username.encode("utf-8"))
+        valid_password = compare_digest((credentials.password or "").encode("utf-8"), password.encode("utf-8"))
+        if valid_user and valid_password:
+            return None
+    return Response("Authentication required.", status=401, headers={
+        "WWW-Authenticate": 'Basic realm="SEO Studio", charset="UTF-8"',
+        "Cache-Control": "no-store",
+    })
+
+
+@app.after_request
+def prevent_private_response_caching(response):
+    if os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"", "0", "false", "off"}:
+        response.headers["Cache-Control"] = "private, no-store"
+        response.vary.add("Authorization")
+    return response
 
 
 @app.route("/")
