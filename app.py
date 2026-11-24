@@ -31,7 +31,7 @@ from web_evidence import extract_page
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 256 * 1024
 _generation_lock = Lock()
 _embedding_cache = EmbeddingCache()
 
@@ -471,6 +471,13 @@ def title_contains_phrase(title, phrase):
     return bool(normalized_phrase) and f" {normalized_phrase} " in f" {normalized_title} "
 
 
+def valid_title_text(title):
+    # Chinese and Japanese titles do not require whitespace between words.
+    letters = sum(ch.isalpha() for ch in title)
+    unsegmented = len(re.findall(r"[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff]", title))
+    return letters >= 3 and (len(title.split()) >= 3 or unsegmented >= 3)
+
+
 def limit_words(text, max_words=12):
     words = re.findall(r"\S+", (text or "").strip())
     if len(words) <= max_words:
@@ -621,7 +628,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
 
         title = limit_words(title, max_words=12)
 
-        if len(title.split()) < 3 or not any(ch.isalpha() for ch in title):
+        if not valid_title_text(title):
             continue
 
         if title.lower() in {item["title"].lower() for item in options}:
@@ -663,7 +670,7 @@ def extract_ai_title_candidates(raw_text):
 
         cleaned = limit_words(cleaned, max_words=12)
 
-        if len(cleaned.split()) < 3 or not any(ch.isalpha() for ch in cleaned):
+        if not valid_title_text(cleaned):
             continue
 
         if cleaned.lower() in {title.lower() for title in candidates}:
@@ -1757,24 +1764,11 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""))
         evidence, evidence_method = select_evidence(" ".join([keyword, chosen_title or "", audience_questions]), data.get("evidence_sources", []), data.get("evidence_mode", "lexical"))
         prompt += evidence_prompt(evidence)
-        raw_text = ""
-
-        for attempt in range(3):
-            raw_text = generate_ai_text(prompt, max_tokens=4000)
-            if not raw_text or not raw_text.strip():
-                raise RuntimeError("AI provider returned an empty article.")
-            body_preview = clean_keyword_artifacts(raw_text.strip(), keyword)
-            preview_word_count = len(body_preview.split())
-
-            if preview_word_count >= MIN_WORD_COUNT or attempt == 2:
-                break
-
-            feedback = []
-            if preview_word_count < MIN_WORD_COUNT:
-                feedback.append(
-                    f"The previous attempt was only about {preview_word_count} words. Expand every section to reach at least {MIN_WORD_COUNT} words."
-                )
-            prompt += "\n\nRevise the complete article based on this quality feedback:\n- " + "\n- ".join(feedback)
+        # Length is an editorial target, not a mandatory retry condition.
+        # A shorter complete answer is preferable to repeated, quota-heavy requests.
+        raw_text = generate_ai_text(prompt, max_tokens=4000)
+        if not raw_text or not raw_text.strip():
+            raise RuntimeError("AI provider returned an empty article.")
 
         # The heading the user typed/selected IS the title - no separate AI-generated
         # "meta title" is requested anymore, so it's derived straight from that heading.

@@ -6,6 +6,8 @@ A general-purpose AI SEO writing and keyword research application for any topic,
 
 ```bash
 python -m venv .venv
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
@@ -105,3 +107,7 @@ Account mode is disabled by default and mutually exclusive with owner and guest 
 PostgreSQL retains accounts and hashed sessions; account article records are stored in the existing private GitHub datastore under `users/<verified-account-id>/drafts/<random-id>.json`. Each immutable JSON record contains Markdown, SEO metadata and an optional same-account parent version. Keeping these fields together avoids partial writes between article and metadata files. The owner draft directory is unchanged. Restricted account testing exposes GET/POST `/api/accounts/articles` and GET `/api/accounts/articles/<filename>` only with a valid session and setup key. Caller-supplied ownership fields are rejected. Use a private datastore; GitHub retains commit history and the application cannot verify repository visibility. Article lists currently contain IDs, not full previews; RAG evidence, research, UI and distributed limits remain outstanding. This is not a public workspace yet.
 
 Account research is stored as individual immutable records under `users/<verified-account-id>/research/`. Restricted GET/POST `/api/accounts/research` and GET `/api/accounts/research/<filename>` use the same session and setup-key checks as article endpoints. Article creation accepts up to five same-account `research_ids`, retrieves relevant excerpts lexically against the keyword, and stores passages alongside the Markdown and metadata. This attaches evidence to manually submitted articles; it does not yet enable account AI generation. Versions inherit parent passages unless new research IDs are supplied; citations are recalculated against the submitted content. Citation checks verify reference IDs, not factual support. No source deletion or UI is implemented yet. GitHub history retains research and article records; do not store confidential source material.
+
+## Generation behaviour
+
+The 2000-word target is advisory; article generation makes one generation request (with the existing provider fallback on failure), rather than repeating successful short responses solely to reach a word count. Review output for completeness. Chinese and Japanese title candidates can pass validation without spaces. Word counts remain whitespace-based estimates, not language-aware segmentation. Request bodies are capped at 256 KiB while existing per-field limits remain in force, allowing larger valid UTF-8 research excerpts. Optional account infrastructure is disabled by default and is not required for the core SEO workflow.
