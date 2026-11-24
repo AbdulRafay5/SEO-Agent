@@ -79,7 +79,10 @@ def main():
                 expect(page.locator("#markdown-rendered-view")).to_be_visible(timeout=20000)
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()
-                expect(page.locator("#citation-report")).to_contain_text("No source ID citations detected.")
+                expect(page.locator("#evidence-results")).to_contain_text("Indoor herbs need sunlight and water.")
+                saved=page.evaluate("JSON.parse(localStorage.getItem('seo_studio_blogs'))[0]")
+                assert saved["evidence"]["passages"][0]["passage"] == "Indoor herbs need sunlight and water."
+                assert saved["content"] == page.locator("#markdown-raw-view").input_value()
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()
                 page.locator("#btn-view-raw").click()
                 expect(page.locator("#markdown-raw-view")).to_be_visible()
@@ -97,6 +100,8 @@ def main():
                 assert versions[0]["isLocalVersion"]
                 assert "Revised care instructions." in versions[0]["content"]
                 assert "Revised care instructions." not in versions[1]["content"]
+                assert versions[0]["evidence"]["citations"] is None
+                assert versions[0]["evidence"]["passages"] == versions[1]["evidence"]["passages"]
                 page.locator("#revision-undo").click()
                 expect(page.locator("#markdown-raw-view")).to_have_value(original)
                 page.locator("#revision-panel").get_by_role("button", name="Close").click()
@@ -107,6 +112,9 @@ def main():
                 expect(page.locator("#repository-grid .repo-card").first).to_be_visible()
                 page.locator("#repository-grid .repo-card").filter(has_not_text="Local version").first.get_by_role("button", name="Load in Studio").click()
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
+                page.get_by_text("Evidence grounding (optional)", exact=True).click()
+                expect(page.locator("#evidence-results")).to_contain_text("Indoor herbs need sunlight and water.")
+                page.get_by_text("Evidence grounding (optional)", exact=True).click()
                 page.locator("#tab-btn-keywords").click()
                 page.locator("#research-topic").fill("Indoor gardening")
                 page.locator("#research-btn").click()

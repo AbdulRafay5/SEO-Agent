@@ -1287,12 +1287,12 @@ function renderRecentDrafts(){
 }
 
 function openDraft(filename){
-  clearCitationReport();
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
   currentDraftFilename=blog.filename;
   revisionUndo=null;
+  restoreDraftEvidence(blog.evidence);
   document.getElementById('seo-description').value=blog.metaDescription||'';
   document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
   document.getElementById('markdown-raw-view').value=blog.content;
@@ -1307,7 +1307,6 @@ function openDraft(filename){
    repo but never generated/opened in this browser, so they have no cached
    .content in savedBlogs yet) - fetches the raw markdown on demand. */
 async function loadDraftFromServer(filename){
-  clearCitationReport();
   try{
     const res=await fetch('/api/blog/'+encodeURIComponent(filename));
     const data=await readApiResponse(res);
@@ -1320,9 +1319,11 @@ async function loadDraftFromServer(filename){
       createdAt:serverFileMeta[filename]?.createdAt||'On server',
       preview:(data.content.substring(0,180))+'…'
     };
+    savedBlogs=savedBlogs.filter(item=>item.filename!==blog.filename);
     savedBlogs.unshift(blog);
-    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){showToast('Article opened but browser storage is unavailable.','warning');}
     updateHeaderCounters();
+    restoreDraftEvidence(null);
 
     rawBlogContent=blog.content;
     currentDraftFilename=blog.filename;
@@ -1720,29 +1721,32 @@ async function generateArticle(){
     updateMetrics(data);
 
     // save
+    const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
     const newPost={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
-      content:data.content,wordCount:data.word_count,
+      content:normalized,wordCount:data.word_count,
+      metaDescription:data.meta_description||'',
+      evidence:data.evidence?.status==='retrieved'||data.evidence?.status==='no_matches'?{...data.evidence,citations:normalized===data.content?data.evidence.citations:null}:null,
       createdAt:new Date().toLocaleDateString()+' · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-      preview:data.content.substring(0,180)+'…'
+      preview:normalized.substring(0,180)+'…'
     };
     savedBlogs.unshift(newPost);
     hiddenServerFiles=hiddenServerFiles.filter(f=>f!==newPost.filename);
-    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){}
+    let draftSaved=true;
+    try{localStorage.setItem('seo_studio_blogs',JSON.stringify(savedBlogs))}catch(e){draftSaved=false;}
     try{localStorage.setItem('seo_studio_hidden_files',JSON.stringify(hiddenServerFiles))}catch(e){}
     updateHeaderCounters();
 
-    const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
     rawBlogContent=normalized;
-    newPost.content=normalized;
     document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(normalized);
     document.getElementById('markdown-raw-view').value=normalized;
     setOutputState('rendered');
     setEditorTab('rendered');
-    renderEvidenceResults(data.evidence?.passages||[]);
-    renderCitationReport(data.evidence?.citations, data.evidence?.status);
-    document.getElementById('evidence-status').textContent=data.evidence?.status==='retrieved'?data.evidence.method+' · Generation received '+data.evidence.passages.length+' passages; check citations against sources.':data.evidence?.status==='no_matches'?'No matching evidence was found; article is not grounded in the supplied text.':'';
-    showToast('Article generated');
+    restoreDraftEvidence(newPost.evidence);
+    // The server report applies to the generated Markdown; if formatting changed,
+    // keep the evidence but explicitly withhold a potentially stale report.
+    if(draftSaved)showToast('Article generated');
+    else showToast('Article generated but browser storage is unavailable. Download your article and retain your research.','warning');
 
   }catch(err){
     stopLoadingSteps();
@@ -1889,7 +1893,7 @@ function saveWorkspaceVersion(){
   const topic=document.getElementById('target-keyword').value.trim()||original?.keyword||'Article';
   const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
   const filename='version_'+id+'.md';
-  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value};
+  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
   const next=[version,...savedBlogs];
   try{localStorage.setItem('seo_studio_blogs',JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
@@ -2215,6 +2219,12 @@ function exportEvidenceLibrary(){
     const a=document.createElement('a');a.href=url;a.download='seo_research_library.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
     status.textContent='Research export requested.';
   }catch(error){status.textContent=error.message||'Research export failed.';}
+}
+function restoreDraftEvidence(evidence){
+  renderEvidenceResults(evidence?.passages||[]);
+  renderCitationReport(evidence?.citations,evidence?.status);
+  const status=document.getElementById('evidence-status');
+  status.textContent=evidence?.status==='retrieved'?evidence.method+' · '+evidence.passages.length+' original retrieved passages. '+(evidence.citations?'Check citations against sources.':'Citation report unavailable for this formatted or edited version.'):evidence?.status==='no_matches'?'No matching evidence was found during generation.':'';
 }
 function clearCitationReport(){
   const box=document.getElementById('citation-report');box.hidden=true;box.replaceChildren();
