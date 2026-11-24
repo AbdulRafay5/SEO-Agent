@@ -127,3 +127,6 @@ Chinese and Japanese script runs use overlapping two-character lexical tokens; l
 
 ### Local metadata and workspace requests
 Local article metadata is saved as an atomic, content-hash-bound JSON sidecar beside Markdown. Older drafts remain readable; local files on serverless temporary storage remain ephemeral. Generated browser drafts and local versions retain editorial settings, while the remote manifest deliberately excludes the editorial brief. Superseded article requests save their successful results to the library instead of replacing the currently selected editor. Browser removal is explicitly not server deletion. Storage errors during removal are reported; multi-key browser writes are not atomic.
+
+### Provider reliability
+Explicit token-limit and selected incomplete-response finish reasons are rejected, with the configured Gemini-to-Groq fallback retained. A response marked complete by a provider is not guaranteed to be editorially complete. Title and keyword AI requests now share the existing process-local generation lock. This is not a distributed or per-user quota system. Frontend CDN versions match browser test dependencies. Studio related Trends searches are explicitly requested rather than triggered on every typing pause.

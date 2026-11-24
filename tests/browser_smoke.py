@@ -37,10 +37,10 @@ def main():
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 # Keep browser checks deterministic: use real library builds installed by CI.
                 vendors = {
-                    "https://unpkg.com/lucide@latest": "node_modules/lucide/dist/umd/lucide.js",
-                    "https://cdn.jsdelivr.net/npm/marked/marked.min.js": "node_modules/marked/marked.min.js",
+                    "https://unpkg.com/lucide@0.468.0": "node_modules/lucide/dist/umd/lucide.js",
+                    "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js": "node_modules/marked/marked.min.js",
                     "https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js": "node_modules/dompurify/dist/purify.min.js",
-                    "https://cdn.jsdelivr.net/npm/chart.js": "node_modules/chart.js/dist/chart.umd.js",
+                    "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js": "node_modules/chart.js/dist/chart.umd.js",
                 }
                 def external(route):
                     path = vendors.get(route.request.url)

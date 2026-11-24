@@ -130,6 +130,16 @@ POWER_WORDS = [
 ]
 
 
+class IncompleteAIResponse(RuntimeError):
+    """A provider explicitly reported that its output was incomplete."""
+
+
+def check_finish_reason(reason):
+    value = str(getattr(reason, "value", reason) or "").split(".")[-1].upper()
+    if value in {"MAX_TOKENS", "LENGTH", "SAFETY", "RECITATION", "CONTENT_FILTER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "TOOL_CALLS", "FUNCTION_CALL"}:
+        raise IncompleteAIResponse("The AI provider did not complete its response. Choose a shorter article or retry.")
+
+
 def generate_ai_text(prompt, max_tokens):
     if gemini_client:
         try:
@@ -138,10 +148,16 @@ def generate_ai_text(prompt, max_tokens):
                 contents=prompt,
                 config={"max_output_tokens": max_tokens},
             )
+            for candidate in getattr(response, "candidates", None) or []:
+                check_finish_reason(getattr(candidate, "finish_reason", None))
             text = (response.text or "").strip()
             if text:
                 return text
             raise RuntimeError("Gemini returned an empty response")
+        except IncompleteAIResponse:
+            if client is None:
+                raise
+            app.logger.warning("Gemini output incomplete; trying configured fallback")
         except Exception:
             app.logger.exception("Gemini AI request failed; falling back to Groq")
 
@@ -152,7 +168,12 @@ def generate_ai_text(prompt, max_tokens):
         messages=[{"role": "user", "content": prompt}],
         max_tokens=max_tokens,
     )
-    return (response.choices[0].message.content or "").strip()
+    choice = response.choices[0]
+    check_finish_reason(getattr(choice, "finish_reason", None))
+    text = (choice.message.content or "").strip()
+    if not text:
+        raise IncompleteAIResponse("The AI provider returned no article text.")
+    return text
 
 
 def generate_title_text(prompt, max_tokens):
@@ -163,7 +184,9 @@ def generate_title_text(prompt, max_tokens):
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_tokens,
             )
-            message = response.choices[0].message
+            choice = response.choices[0]
+            check_finish_reason(getattr(choice, "finish_reason", None))
+            message = choice.message
             text = (message.content or "").strip()
             if text:
                 return text
@@ -1644,8 +1667,14 @@ def api_keyword_research():
     if gemini_client or client:
         try:
             prompt = build_research_prompt(topic, data.get("language") or "English", geo or "Worldwide", data.get("audience", ""))
-            suggestions = parse_ai_suggestions(generate_ai_text(prompt, 3000))
-            ai_status = "available" if suggestions else "no usable suggestions"
+            if _generation_lock.acquire(blocking=False):
+                try:
+                    suggestions = parse_ai_suggestions(generate_ai_text(prompt, 3000))
+                    ai_status = "available" if suggestions else "no usable suggestions"
+                finally:
+                    _generation_lock.release()
+            else:
+                ai_status = "busy; try again"
         except Exception:
             app.logger.warning("AI keyword research unavailable", exc_info=True)
     return jsonify({"topic": topic, "region": geo or "Worldwide", "timeframe": period,
@@ -1669,7 +1698,12 @@ def api_titles(keyword):
 
     try:
         prompt = build_title_prompt(keyword, primary_keywords, include_power_words, language, audience)
-        raw_text = generate_title_text(prompt, max_tokens=1200)
+        if not _generation_lock.acquire(blocking=False):
+            return jsonify({"error": "An AI request is already running. Try again shortly."}), 429
+        try:
+            raw_text = generate_title_text(prompt, max_tokens=1200)
+        finally:
+            _generation_lock.release()
 
         title_options = extract_title_meta_options(raw_text, primary_keywords, include_power_words, language)
         titles = [item["title"] for item in title_options]
@@ -1940,6 +1974,8 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "filename": safe_filename,
         })
 
+    except IncompleteAIResponse as error:
+        return jsonify({"error": str(error)}), 502
     except Exception as e:
         error_text = str(e)
         if "rate_limit" in error_text.lower() or "429" in error_text:

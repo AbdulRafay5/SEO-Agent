@@ -8,10 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://unpkg.com/lucide@0.468.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"></script>
 
 <style>
 /* ═══════════════════════════════
@@ -695,6 +695,7 @@ select.field-input{padding-left:12px;cursor:pointer}
           <div class="field">
             <div class="field-label">Trending now</div>
             <div class="chip-group" id="studio-quick-trends" style="margin-top:4px"></div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="updateStudioTrendingChips()">Find related trends</button>
           </div>
 
           <!-- Post purpose -->
@@ -1162,7 +1163,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   renderRepositoryCards();
   renderStudioQuickPicks();
   renderRecentDrafts();
-  document.getElementById('target-keyword')?.addEventListener('input',scheduleStudioTrendingUpdate);
+  document.getElementById('target-keyword')?.addEventListener('input',()=>{studioTrendingRequestId++;renderStudioQuickPicks();});
 });
 
 function loadBackendPayloads(){
@@ -1424,10 +1425,9 @@ function scheduleStudioTrendingUpdate(){
   studioTrendingTimer=setTimeout(updateStudioTrendingChips,600);
 }
 async function updateStudioTrendingChips(){
-  const kw=document.getElementById('target-keyword')?.value.trim()||'';
-  if(!kw){renderStudioQuickPicks();return;}
-
   const requestId=++studioTrendingRequestId;
+  const kw=document.getElementById('target-keyword')?.value.trim()||'';
+  if(!kw){renderStudioQuickPicks();showToast('Enter a keyword first','warning');return;}
   try{
     const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe=1m');
     const data=await res.json();
