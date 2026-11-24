@@ -191,9 +191,9 @@ def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
         and w.lower() not in {"software", "system", "management", "in"}
     ]
     if context_words:
-        return " ".join(context_words[:3]) + " retail counter"
+        return " ".join(context_words[:3])
 
-    return "pharmacy medicine store counter"
+    return primary_keyword or "nature"
 
 
 def get_pexels_image(query, primary_keyword="", section_context="", used_urls=None):
@@ -236,7 +236,7 @@ def get_pexels_image(query, primary_keyword="", section_context="", used_urls=No
             w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
             if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
         ]
-        broad_query = f"{' '.join(fallback_words[:2])} retail store".strip() if fallback_words else "pharmacy retail store"
+        broad_query = ' '.join(fallback_words[:2]) if fallback_words else (primary_keyword or 'nature')
         fallback_params = {"query": broad_query, "per_page": 5, "orientation": "landscape"}
         fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
         if fallback_res.status_code == 200:
@@ -919,7 +919,8 @@ def get_fallback_trend_data(geo=""):
         "region_data": [],
         "chart_labels": [],
         "chart_values": [],
-        "region_scope": "top_queries": [],
+        "region_scope": geo or "Worldwide",
+        "top_queries": [],
         "rising_queries": []
     }
 
@@ -1077,7 +1078,8 @@ def fetch_trends_data(searched_keyword, timeframe, geo=""):
                 "chart_labels": chart_labels,
                 "chart_values": chart_values,
                 "region_data": region_data,
-                "region_scope": "top_queries": top_queries,
+                "region_scope": geo or "Worldwide",
+        "top_queries": top_queries,
                 "rising_queries": rising_queries,
             }
             has_data = bool(chart_values or region_data or top_queries or rising_queries)
