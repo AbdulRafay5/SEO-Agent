@@ -22,6 +22,7 @@ from pytrends.request import TrendReq
 from keywords import all_keywords
 import github_store
 import account_auth
+from account_store import AccountStore
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
 from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt, EmbeddingCache, citation_report
@@ -806,6 +807,13 @@ def protect_owner_workspace():
             return Response("Account storage unavailable.", status=503)
         if not g.account:
             return jsonify({"error":"Authentication required."}), 401
+        # Only isolated storage endpoints are available during restricted testing.
+        if request.endpoint in {"account_articles", "account_article"}:
+            if not account_request_allowed():
+                return jsonify({"error":"Account testing is restricted."}), 403
+            if not github_store._configured():
+                return jsonify({"error":"Private article datastore is not configured."}), 503
+            return None
         return jsonify({"error":"Account workspace is not enabled yet."}), 503
     if guest_mode():
         # Guest deployments are separate from the private owner deployment.
@@ -894,6 +902,43 @@ def account_logout():
     response = jsonify({"authenticated":False})
     response.delete_cookie("seo_session", path="/", secure=True, httponly=True, samesite="Strict")
     return response
+
+
+@app.route("/api/accounts/articles", methods=["GET", "POST"])
+def account_articles():
+    if not account_mode():
+        abort(404)
+    store = AccountStore(g.account["id"])
+    try:
+        if request.method == "GET":
+            return jsonify({"articles": store.list_articles()})
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
+        if set(data) - {"content", "keyword", "meta_description", "version_of"}:
+            return jsonify({"error": "Unexpected article field."}), 400
+        record = store.create_article(data.get("content"), data.get("keyword", ""),
+                                      data.get("meta_description", ""), data.get("version_of"))
+        return jsonify(record), 201
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        return jsonify({"error": "Article storage unavailable."}), 503
+
+
+@app.get("/api/accounts/articles/<filename>")
+def account_article(filename):
+    if not account_mode():
+        abort(404)
+    try:
+        record = AccountStore(g.account["id"]).read_article(filename)
+    except ValueError:
+        return jsonify({"error":"Article not found."}), 404
+    except Exception:
+        return jsonify({"error":"Article storage unavailable."}), 503
+    if record is None:
+        return jsonify({"error":"Article not found."}), 404
+    return jsonify(record)
 
 
 @app.after_request
