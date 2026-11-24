@@ -1181,6 +1181,7 @@ def api_trends():
         return response
 
 
+@app.post("/api/evidence/search")
 @app.post("/api/competitors/search")
 def api_competitor_search():
     data = request.get_json(silent=True)
@@ -1195,7 +1196,7 @@ def api_competitor_search():
         return jsonify({"error": "Use a search language code such as en, fr or ur."}), 400
     key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
     if not key:
-        return jsonify({"error": "Live search is optional. Configure BRAVE_SEARCH_API_KEY or use manual comparison."}), 503
+        return jsonify({"error": "Live search is optional. Configure BRAVE_SEARCH_API_KEY or supply source material manually."}), 503
     params = {"q": topic.strip(), "count": 5, "country": geo.upper() or "ALL", "search_lang": language.lower() or "en"}
     try:
         response = requests.get("https://api.search.brave.com/res/v1/web/search",
@@ -1215,7 +1216,7 @@ def api_competitor_search():
         return jsonify({"source": "Brave Search", "region": params["country"], "search_lang": params["search_lang"], "results": results})
     except (requests.RequestException, ValueError, TypeError, AttributeError):
         app.logger.warning("Search provider request failed")
-        return jsonify({"error": "Live search unavailable. Check provider settings or use manual comparison."}), 502
+        return jsonify({"error": "Live search unavailable. Check provider settings or supply source material manually."}), 502
 
 
 @app.post("/api/competitors/compare")
@@ -1398,7 +1399,7 @@ def api_evidence_preview():
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     return jsonify({"passages": retrieve(topic, sources), "method": "BM25 lexical retrieval",
-                    "source_type": "User-supplied text; not independently verified"})
+                    "source_type": "Supplied text or search snippets; not independently verified"})
 
 
 @app.post("/api/generate")

@@ -663,6 +663,14 @@ select.field-input{padding-left:12px;cursor:pointer}
           <details class="field">
             <summary style="cursor:pointer;font-weight:600">Evidence grounding (optional)</summary>
             <p style="font-size:12px;color:var(--muted);margin:6px 0">Paste source excerpts to retrieve relevant passages. Links are not automatically fetched. Excerpts are sent to the configured AI provider during generation.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+              <input id="evidence-search-geo" class="field-input no-icon" style="width:100px" maxlength="2" placeholder="Worldwide" aria-label="Evidence country code">
+              <input id="evidence-search-lang" class="field-input no-icon" style="width:80px" value="en" aria-label="Evidence search language">
+              <button class="btn btn-secondary btn-sm" id="evidence-search-btn" onclick="discoverEvidence()">Find online sources</button>
+            </div>
+            <p style="font-size:12px;color:var(--muted)">Optional Brave Search API; quota and billing terms apply. Search results contain snippets, not full articles. Review before adding.</p>
+            <p id="evidence-search-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
+            <div id="evidence-search-results" style="display:grid;gap:6px;max-height:260px;overflow:auto"></div>
             <div id="evidence-inputs"></div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"><button class="btn btn-secondary btn-sm" onclick="addEvidenceSource()">Add source</button><button class="btn btn-secondary btn-sm" id="evidence-preview-btn" onclick="previewEvidence()">Preview relevant evidence</button></div>
             <p id="evidence-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
@@ -2087,24 +2095,47 @@ async function researchKeywords(){
   }catch(err){status.textContent=err.message||'Research unavailable';}
   finally{btn.disabled=false;}
 }
-function addEvidenceSource(){
+function addEvidenceSource(entry=null){
   const wrap=document.getElementById('evidence-inputs');
   if(wrap.children.length>=5){showToast('Maximum five evidence sources','warning');return;}
   const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
   row.innerHTML='<input class="field-input no-icon" data-evidence-title maxlength="240" placeholder="Source title" aria-label="Evidence title"><input class="field-input no-icon" data-evidence-url maxlength="2048" placeholder="Source URL (optional)" aria-label="Evidence URL"><textarea class="field-input no-icon" data-evidence-text maxlength="12000" rows="4" placeholder="Paste relevant source text" aria-label="Evidence text"></textarea>';
+  const kind=document.createElement('select');kind.className='field-input no-icon';kind.setAttribute('aria-label','Evidence source type');kind.dataset.evidenceKind='';
+  for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);
+  if(entry){kind.value='search_snippet';row.querySelector('[data-evidence-title]').value=entry.title.slice(0,240);row.querySelector('[data-evidence-url]').value=entry.url;row.querySelector('[data-evidence-text]').value=entry.snippet;}
   const remove=document.createElement('button');remove.className='btn btn-secondary btn-sm';remove.textContent='Remove source';remove.onclick=()=>row.remove();row.appendChild(remove);wrap.appendChild(row);
 }
 function readEvidenceSources(){
-  return [...document.getElementById('evidence-inputs').children].map(row=>({title:row.querySelector('[data-evidence-title]').value.trim(),url:row.querySelector('[data-evidence-url]').value.trim(),text:row.querySelector('[data-evidence-text]').value.trim()})).filter(source=>source.title||source.url||source.text);
+  return [...document.getElementById('evidence-inputs').children].map(row=>({title:row.querySelector('[data-evidence-title]').value.trim(),url:row.querySelector('[data-evidence-url]').value.trim(),text:row.querySelector('[data-evidence-text]').value.trim(),kind:row.querySelector('[data-evidence-kind]').value})).filter(source=>source.title||source.url||source.text);
 }
 function renderEvidenceResults(passages){
   const results=document.getElementById('evidence-results');results.replaceChildren();
   for(const passage of passages){
     const box=document.createElement('div');box.style.cssText='padding:8px;border:1px solid var(--border);font-size:12px;overflow-wrap:anywhere';
-    const title=document.createElement('strong');title.textContent=passage.source_id+' · '+passage.title;
+    const title=document.createElement('strong');title.textContent=passage.source_id+' · '+passage.title+' · '+(passage.kind==='search_snippet'?'Search snippet':'Pasted excerpt');
     const text=document.createElement('p');text.textContent=passage.passage;
     const source=document.createElement('div');source.textContent=passage.url||'User-supplied text';box.append(title,source,text);results.appendChild(box);
   }
+}
+async function discoverEvidence(){
+  const status=document.getElementById('evidence-search-status'),button=document.getElementById('evidence-search-btn'),results=document.getElementById('evidence-search-results');
+  const topic=document.getElementById('target-keyword').value.trim();
+  if(!topic){status.textContent='Enter an article topic first.';return;}
+  button.disabled=true;results.replaceChildren();status.textContent='Finding online sources…';
+  try{
+    const response=await fetch('/api/evidence/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,geo:document.getElementById('evidence-search-geo').value.trim(),search_lang:document.getElementById('evidence-search-lang').value.trim()})});
+    const data=await readApiResponse(response);
+    if(!response.ok)throw new Error(data.error||'Search unavailable');
+    status.textContent=data.results.length+' Brave search results · '+data.region+' · Review sources before adding.';
+    for(const entry of data.results){
+      const box=document.createElement('div');box.style.cssText='padding:8px;border:1px solid var(--border);overflow-wrap:anywhere;font-size:12px';
+      const link=document.createElement('a');link.href=entry.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=entry.title;
+      const text=document.createElement('p');text.textContent=entry.snippet||'No snippet provided.';
+      const add=document.createElement('button');add.className='btn btn-secondary btn-sm';add.textContent='Use snippet';add.disabled=!entry.snippet.trim();add.onclick=()=>{const wrap=document.getElementById('evidence-inputs');if(wrap.children.length>=5){showToast('Maximum five evidence sources','warning');return;}addEvidenceSource(entry);add.disabled=true;};
+      box.append(link,text,add);results.appendChild(box);
+    }
+  }catch(error){status.textContent=error.message||'Search unavailable';}
+  finally{button.disabled=false;}
 }
 async function previewEvidence(){
   const status=document.getElementById('evidence-status'),button=document.getElementById('evidence-preview-btn');
@@ -2114,7 +2145,7 @@ async function previewEvidence(){
     const data=await readApiResponse(response);
     if(!response.ok)throw new Error(data.error||'Evidence retrieval failed');
     renderEvidenceResults(data.passages);
-    status.textContent=data.passages.length+' matching passages from user-provided evidence. Not independently verified.';
+    status.textContent=data.passages.length+' matching passages from supplied evidence. Not independently verified.';
   }catch(error){renderEvidenceResults([]);status.textContent=error.message||'Evidence retrieval failed';}
   finally{button.disabled=false;}
 }
