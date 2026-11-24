@@ -1004,6 +1004,49 @@ def remote_version_saving_enabled():
             and github_store._configured())
 
 
+def local_metadata(filename, body=None):
+    """Read local sidecar metadata only for a valid, existing article."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.md", filename):
+        return {}
+    path = os.path.join(BLOGS_FOLDER, filename)
+    try:
+        with open(path + ".json", encoding="utf-8") as handle:
+            raw = handle.read(160001)
+        if len(raw) > 160000:
+            return {}
+        record = json.loads(raw)
+        if not isinstance(record, dict) or record.get("schema") != 1:
+            return {}
+        if body is None:
+            with open(path, encoding="utf-8") as handle:
+                body = handle.read()
+        if record.get("sha256") != sha256(body.encode("utf-8")).hexdigest():
+            return {}
+        meta = record.get("metadata", {})
+        return meta if isinstance(meta, dict) and meta.get("filename") == filename else {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def save_local_metadata(filename, body, metadata):
+    path = os.path.join(BLOGS_FOLDER, filename + ".json")
+    temporary = path + "." + uuid4().hex + ".tmp"
+    try:
+        with open(temporary, "x", encoding="utf-8") as handle:
+            json.dump({"schema": 1, "sha256": sha256(body.encode("utf-8")).hexdigest(),
+                       "metadata": metadata}, handle, ensure_ascii=False)
+        os.replace(temporary, path)
+        return True
+    except OSError:
+        app.logger.warning("Local article metadata could not be saved")
+        return False
+    finally:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+
+
 @app.route("/")
 def home():
     if guest_mode():
@@ -1017,6 +1060,11 @@ def home():
         repo_files = set()
     files = sorted(f for f in local_files | repo_files if f.endswith(".md"))
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
+    for filename in files:
+        if filename in local_files:
+            local = local_metadata(filename)
+            if local:
+                file_meta[filename] = local
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta,
                            remote_versions_enabled=remote_version_saving_enabled(), guest_workspace=False)
 
@@ -1134,12 +1182,13 @@ def api_get_blog(filename):
     if raw_text is None:
         return jsonify({"error": "Article not found."}), 404
 
-    meta = next((entry for entry in _load_manifest() if entry.get("filename") == safe_filename), {})
+    meta = local_metadata(safe_filename, raw_text) or next((entry for entry in _load_manifest() if entry.get("filename") == safe_filename), {})
     return jsonify({
         "filename": safe_filename,
         "content": raw_text,
         "keyword": meta.get("keyword") or safe_filename.replace("_", " ").replace(".md", ""),
-        "word_count": meta.get("wordCount") or len(raw_text.split()),
+        "word_count": analyze_article(raw_text, meta.get("keyword", ""))["word_count"],
+        "brief": meta.get("brief", {}),
         "meta_description": meta.get("metaDescription", ""),
         "target_words": meta.get("targetWords", 2000),
         "evidence": load_remote_evidence(safe_filename, raw_text),
@@ -1841,7 +1890,15 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         evidence_result = {"method": evidence_method, "passages": evidence,
                            "citations": citation_report(body, evidence),
                            "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"}
+        brief = {key: data.get(key, "") for key in ("language", "audience", "market", "links", "purpose", "questions", "tone")}
+        brief["secondary_keywords"] = secondary_keywords
+        metadata = {"filename": safe_filename, "keyword": keyword, "wordCount": word_count,
+                    "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
+                    "preview": body[:180], "metaDescription": meta_description, "targetWords": target_words,
+                    "brief": brief}
+        local_metadata_saved = not guest_mode() and save_local_metadata(safe_filename, body, metadata)
         storage = {"article_saved": False, "metadata_saved": False, "evidence_saved": False,
+                   "local_metadata_saved": local_metadata_saved,
                    "remote_configured": not guest_mode() and github_store._configured(),
                    "evidence_enabled": remote_evidence_enabled()}
         try:
@@ -1850,11 +1907,8 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
                     f"{DRAFTS_REPO_DIR}/{safe_filename}", body,
                     message="Save article draft", expected_sha=None))
             if storage["article_saved"]:
-                storage["metadata_saved"] = bool(_upsert_manifest_entry({
-                    "filename": safe_filename, "keyword": keyword, "wordCount": word_count,
-                    "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
-                    "preview": body[:180], "metaDescription": meta_description, "targetWords": target_words,
-                }))
+                # Keep reference links and personal editorial briefs local unless explicitly exported.
+                storage["metadata_saved"] = bool(_upsert_manifest_entry({key: value for key, value in metadata.items() if key != "brief"}))
                 storage["evidence_saved"] = save_remote_evidence(safe_filename, body, evidence_result)
         except Exception:
             app.logger.warning("Remote article save incomplete", exc_info=True)
@@ -1872,6 +1926,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "content": body,
             "word_count": word_count,
             "target_words": target_words,
+            "brief": brief,
             "keyword_count": keyword_count,
             "evidence": evidence_result,
             "storage": storage,

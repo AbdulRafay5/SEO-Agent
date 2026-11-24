@@ -1090,8 +1090,19 @@ let hiddenServerFiles=[];
 let currentTheme='light';
 let rawBlogContent='';
 let currentDraftFilename=null;
+let workspaceRequestId=0;
 let workspaceBaseline='';
 let workspaceBaselineDescription='';
+function restoreBrief(brief){
+  if(!brief||typeof brief!=='object')brief={};
+  for(const key of ['language','audience','market','links'])document.getElementById('article-'+key).value=brief[key]|| (key==='language'?'English':'');
+  document.getElementById('blog-purpose').value=brief.purpose||'';
+  document.getElementById('blog-tone').value=brief.tone||'professional';
+  const list=document.getElementById('secondary-keyword-list');list.replaceChildren();
+  for(const item of (Array.isArray(brief.secondary_keywords)?brief.secondary_keywords.slice(0,20):[])){
+    addSecondaryKeyword();const row=list.lastElementChild;row.querySelector('[data-secondary-keyword]').value=item.keyword||'';row.querySelector('[data-secondary-count]').textContent=item.count||1;
+  }
+}
 function rememberWorkspace(){workspaceBaseline=rawBlogContent;workspaceBaselineDescription=document.getElementById('seo-description').value;}
 function workspaceDirty(){return rawBlogContent!==workspaceBaseline||document.getElementById('seo-description').value!==workspaceBaselineDescription;}
 function allowWorkspaceChange(){return !workspaceDirty()||confirm('Discard unsaved article edits? Save a version or download the article to keep them.');}
@@ -1301,8 +1312,9 @@ function renderRecentDrafts(){
 
 function openDraft(filename){
   if(!allowWorkspaceChange())return;
+  const requestId=++workspaceRequestId;
   let blog=savedBlogs.find(b=>b.filename===filename);
-  if(!blog||!blog.content){loadDraftFromServer(filename);return;}
+  if(!blog||!blog.content){loadDraftFromServer(filename,requestId);return;}
   rawBlogContent=blog.content;
   currentDraftFilename=blog.filename;
   revisionUndo=null;
@@ -1314,6 +1326,7 @@ function openDraft(filename){
   setOutputState('rendered');
   setEditorTab('rendered');
   document.getElementById('article-word-count').value=validWordTarget(blog.targetWords);
+  restoreBrief(blog.brief);
   selectedH1Title='';
   document.getElementById('article-heading').value=(blog.content.match(/^#\s+(.+)$/m)||[])[1]||'';
   refreshWorkspaceMetrics();
@@ -1324,15 +1337,17 @@ function openDraft(filename){
 /* Covers articles that only exist server-side (saved to the GitHub drafts
    repo but never generated/opened in this browser, so they have no cached
    .content in savedBlogs yet) - fetches the raw markdown on demand. */
-async function loadDraftFromServer(filename){
+async function loadDraftFromServer(filename,requestId){
+  const snapshot=rawBlogContent;
   try{
     const res=await fetch('/api/blog/'+encodeURIComponent(filename));
     const data=await readApiResponse(res);
+    if(requestId!==workspaceRequestId||snapshot!==rawBlogContent)return;
     if(!res.ok)throw new Error(data.error||'Could not load this article');
 
     const blog={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
-      content:data.content,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),
+      content:data.content,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),brief:data.brief||{},
       metaDescription:data.meta_description||'',versionOf:data.version_of||null,isRemoteVersion:!!data.is_remote_version,evidence:data.evidence||null,
       createdAt:serverFileMeta[filename]?.createdAt||'On server',
       preview:(data.content.substring(0,180))+'…'
@@ -1353,6 +1368,7 @@ async function loadDraftFromServer(filename){
     setOutputState('rendered');
     setEditorTab('rendered');
     document.getElementById('article-word-count').value=validWordTarget(blog.targetWords);
+  restoreBrief(blog.brief);
   selectedH1Title='';
   document.getElementById('article-heading').value=(blog.content.match(/^#\s+(.+)$/m)||[])[1]||'';
   refreshWorkspaceMetrics();
@@ -1436,6 +1452,8 @@ async function updateStudioTrendingChips(){
 }
 
 function setKeyword(kw){
+  if(!allowWorkspaceChange())return;
+  workspaceRequestId++;
   const input=document.getElementById('target-keyword');
   if(input)input.value=kw;
   clearTitleSelection();
@@ -1635,6 +1653,7 @@ async function fetchTitleOptions(){
   if(!kw){showToast('Enter a heading or primary keyword first','warning');return;}
   const powerWordsMode=(document.getElementById('power-words-mode')?.value||'no').toLowerCase();
   if(!allowWorkspaceChange())return;
+  const requestId=++workspaceRequestId;
   const btn=document.getElementById('btn-fetch-titles');
   const btnText=document.getElementById('btn-titles-text');
   btn.disabled=true;
@@ -1648,6 +1667,7 @@ async function fetchTitleOptions(){
   try{
     const res=await fetch('/api/titles/'+encodeURIComponent(kw)+'?power_words='+encodeURIComponent(powerWordsMode)+'&language='+encodeURIComponent(document.getElementById('article-language').value)+'&audience='+encodeURIComponent(document.getElementById('article-audience').value));
     const data=await readApiResponse(res);
+    if(requestId!==workspaceRequestId)return;
     if(!res.ok)throw new Error(data.error||'Title generation failed');
     if(data.titles&&data.titles.length){
       const options=(data.title_options&&data.title_options.length)
@@ -1726,6 +1746,7 @@ async function generateArticle(){
   const kw=document.getElementById('target-keyword').value.trim();
   if(!kw){showToast('Enter a primary keyword first','warning');return;}
   if(!allowWorkspaceChange())return;
+  const requestId=++workspaceRequestId;
   const genBtn=document.getElementById('generate-btn');
   const genText=document.getElementById('generate-btn-text');
   genBtn.disabled=true;
@@ -1763,6 +1784,8 @@ async function generateArticle(){
     if(!response.ok)throw new Error(data.error||'Generation failed. Try again.');
 
     stopLoadingSteps();
+    const superseded=requestId!==workspaceRequestId;
+    if(!superseded){
     rawBlogContent=data.content;
     currentDraftFilename=data.filename;
     revisionUndo=null;
@@ -1770,12 +1793,13 @@ async function generateArticle(){
 
     // update metrics
     updateMetrics(data);
+    }
 
     // save
     const normalized=data.content.trim();
     const newPost={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
-      content:normalized,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),
+      content:normalized,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),brief:data.brief||{},
       metaDescription:data.meta_description||'',
       evidence:data.evidence?.status==='retrieved'||data.evidence?.status==='no_matches'?{...data.evidence,citations:normalized===data.content?data.evidence.citations:null}:null,
       createdAt:new Date().toLocaleDateString()+' · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
@@ -1787,6 +1811,7 @@ async function generateArticle(){
     try{localStorage.setItem(draftStorageKey,JSON.stringify(savedBlogs))}catch(e){draftSaved=false;}
     try{localStorage.setItem(hiddenStorageKey,JSON.stringify(hiddenServerFiles))}catch(e){}
     updateHeaderCounters();
+    if(superseded){showToast(draftSaved?'Article saved in library':'Article generated but browser storage failed; check server storage',draftSaved?'success':'warning');return;}
 
     rawBlogContent=normalized;
     document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(normalized);
@@ -1803,7 +1828,8 @@ async function generateArticle(){
 
   }catch(err){
     stopLoadingSteps();
-    setOutputState('empty');
+    if(requestId!==workspaceRequestId){showToast(err.message||'Generation failed','error');return;}
+    if(rawBlogContent){setOutputState('rendered');setEditorTab('rendered');}else setOutputState('empty');
     renderRecentDrafts();
     const errEl=document.getElementById('generate-error');
     const errMsg=document.getElementById('generate-error-msg');
@@ -1935,7 +1961,7 @@ function undoRevision(){
   const original=revisionUndo.before;revisionUndo=null;applyWorkspaceRevision(original);openRevisionPanel();
   document.getElementById('revision-status').textContent='Revision undone.';
 }
-function syncRawEdits(){clearCitationReport();closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;refreshWorkspaceMetrics();}
+function syncRawEdits(){workspaceRequestId++;clearCitationReport();closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;refreshWorkspaceMetrics();}
 
 function saveWorkspaceVersion(){
   const visible=['markdown-rendered-view','markdown-raw-view'].some(id=>document.getElementById(id).style.display!=='none');
@@ -1944,7 +1970,7 @@ function saveWorkspaceVersion(){
   const topic=document.getElementById('target-keyword').value.trim()||original?.keyword||'Article';
   const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
   const filename='version_'+id+'.md';
-  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,targetWords:validWordTarget(Number(document.getElementById('article-word-count').value)),createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
+  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,targetWords:validWordTarget(Number(document.getElementById('article-word-count').value)),brief:{...Object.fromEntries(['language','audience','market','links'].map(key=>[key,document.getElementById('article-'+key).value])),purpose:document.getElementById('blog-purpose').value,tone:document.getElementById('blog-tone').value,secondary_keywords:getSecondaryKeywords()},createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
   const next=[version,...savedBlogs];
   try{localStorage.setItem(draftStorageKey,JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
@@ -2440,7 +2466,7 @@ function renderRepositoryCards(){
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
           <div style="display:flex;gap:4px;margin-left:auto">
           <button data-action="open" class="btn btn-ghost btn-sm" style="font-size:12px">Load in Studio</button>
-          <button data-action="delete" class="btn btn-danger btn-sm" aria-label="Delete article">
+          <button data-action="delete" class="btn btn-danger btn-sm" aria-label="Remove from browser library">
             <i data-lucide="trash-2" style="width:14px;height:14px" aria-hidden="true"></i>
           </button>
         </div>
@@ -2453,12 +2479,12 @@ function renderRepositoryCards(){
 }
 
 function requestDeleteBlog(filename){
-  document.getElementById('confirm-modal-msg').textContent='Remove "'+filename+'" from the library?';
+  document.getElementById('confirm-modal-msg').textContent='Remove "'+filename+'" from this browser library? Server copies will remain.';
   pendingConfirmAction=()=>{
-    savedBlogs=savedBlogs.filter(b=>b.filename!==filename);
-    if(serverFiles.includes(filename)&&!hiddenServerFiles.includes(filename))hiddenServerFiles.push(filename);
-    try{localStorage.setItem(draftStorageKey,JSON.stringify(savedBlogs))}catch(e){}
-    try{localStorage.setItem(hiddenStorageKey,JSON.stringify(hiddenServerFiles))}catch(e){}
+    const next=savedBlogs.filter(b=>b.filename!==filename);
+    const hidden=[...new Set([...hiddenServerFiles,filename])];
+    try{localStorage.setItem(draftStorageKey,JSON.stringify(next));localStorage.setItem(hiddenStorageKey,JSON.stringify(hidden));}catch(e){showToast('Library update could not be fully saved','error');return;}
+    savedBlogs=next;hiddenServerFiles=hidden;
     renderRepositoryCards();updateHeaderCounters();renderRecentDrafts();showToast('Article removed');
   };
   document.getElementById('confirm-modal').classList.add('open');
