@@ -1,4 +1,4 @@
-from flask import Flask, abort, render_template, jsonify, request, Response
+from flask import Flask, abort, render_template, jsonify, request, Response, g, redirect
 from hmac import compare_digest
 from dotenv import dotenv_values, load_dotenv
 from datetime import date
@@ -21,6 +21,7 @@ from groq import Groq
 from pytrends.request import TrendReq
 from keywords import all_keywords
 import github_store
+import account_auth
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
 from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt, EmbeddingCache, citation_report
@@ -781,14 +782,31 @@ MEDIA
 Output only the finished Markdown article."""
 
 
+def account_mode():
+    return os.getenv("SEO_ACCOUNT_MODE", "").strip() == "1"
+
+
 def guest_mode():
-    return os.getenv("SEO_GUEST_MODE", "").strip() == "1"
+    return os.getenv("SEO_GUEST_MODE", "").strip() == "1" or account_mode()
 
 
 @app.before_request
 def protect_owner_workspace():
     """Optional single-owner gate for the existing shared workspace."""
     enabled = os.getenv("SEO_OWNER_AUTH", "").strip().lower()
+    if account_mode():
+        if enabled not in {"", "0", "false", "off"} or os.getenv("SEO_GUEST_MODE", "").strip() == "1" or not os.getenv("SEO_DATABASE_URL"):
+            return Response("Account mode is not configured correctly.", status=503)
+        # Keep account mode closed to general use until shared quotas and storage exist.
+        if request.endpoint in {"account_login", "account_register", "account_logout"}:
+            return None
+        try:
+            g.account = account_auth.current_account(request.cookies.get("seo_session"))
+        except Exception:
+            return Response("Account storage unavailable.", status=503)
+        if not g.account:
+            return jsonify({"error":"Authentication required."}), 401
+        return jsonify({"error":"Account workspace is not enabled yet."}), 503
     if guest_mode():
         # Guest deployments are separate from the private owner deployment.
         # Refuse ambiguous configuration rather than expose the owner workspace.
@@ -813,6 +831,69 @@ def protect_owner_workspace():
         "WWW-Authenticate": 'Basic realm="SEO Studio", charset="UTF-8"',
         "Cache-Control": "no-store",
     })
+
+
+def account_request_allowed():
+    # Provisioning/testing only. Do not expose unauthenticated account creation
+    # or password hashing to unrestricted traffic until distributed limits exist.
+    key = os.getenv("SEO_ACCOUNT_SETUP_KEY", "")
+    supplied = request.headers.get("X-Account-Setup-Key", "")
+    return len(key) >= 32 and compare_digest(key.encode(), supplied.encode())
+
+
+@app.post("/api/accounts/register")
+def account_register():
+    if not account_mode():
+        abort(404)
+    if not account_request_allowed():
+        return jsonify({"error":"Account provisioning is restricted."}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error":"Send a JSON object."}), 400
+    try:
+        created = account_auth.register(data.get("username"), data.get("password"))
+        return jsonify({"created":created}), 201 if created else 409
+    except ValueError as error:
+        return jsonify({"error":str(error)}), 400
+    except Exception:
+        return jsonify({"error":"Account storage unavailable."}), 503
+
+
+@app.post("/api/accounts/login")
+def account_login():
+    if not account_mode():
+        abort(404)
+    if not account_request_allowed():
+        return jsonify({"error":"Account testing is restricted."}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error":"Send a JSON object."}), 400
+    try:
+        token = account_auth.login(data.get("username"), data.get("password"))
+    except ValueError:
+        token = None
+    except Exception:
+        return jsonify({"error":"Account storage unavailable."}), 503
+    if not token:
+        return jsonify({"error":"Invalid username or password."}), 401
+    response = jsonify({"authenticated":True})
+    response.set_cookie("seo_session", token, max_age=43200, httponly=True, secure=True, samesite="Strict", path="/")
+    return response
+
+
+@app.post("/api/accounts/logout")
+def account_logout():
+    if not account_mode():
+        abort(404)
+    if not account_request_allowed():
+        return jsonify({"error":"Account testing is restricted."}), 403
+    try:
+        account_auth.logout(request.cookies.get("seo_session"))
+    except Exception:
+        return jsonify({"error":"Logout could not be confirmed."}), 503
+    response = jsonify({"authenticated":False})
+    response.delete_cookie("seo_session", path="/", secure=True, httponly=True, samesite="Strict")
+    return response
 
 
 @app.after_request
