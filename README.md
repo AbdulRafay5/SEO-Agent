@@ -81,3 +81,7 @@ For an authenticated owner workspace, enable SEO_EMBEDDING_CACHE=1 alongside SEO
 ### Citation reference checks
 
 Evidence-backed generation reports explicit bracketed source IDs (for example [S1] or [S1, S2]), unknown IDs, cited sources and unused retrieved sources. The original generated content is not silently changed. Checks only compare identifiers against retrieved passages; factual entailment, arbitrary hyperlinks and external source accuracy are not verified. The report is for the latest generation and is cleared when opening another draft or editing content; reports are not persisted. Review the underlying evidence before publication.
+
+### Offline RAG evaluation
+
+Run `python rag_evaluation.py` from the repository root to print a JSON benchmark report. Ten synthetic labelled cases exercise English, Spanish, French, Urdu, unsegmented Japanese, no-match queries, distractors and a semantic paraphrase. Source-level precision@3, recall@3, MRR@3 and nDCG@3 use unique source IDs from the returned passages; precision uses fixed k. No-match accuracy is reported separately. Hybrid comparison uses supplied mock vectors only and does not measure Gemini embedding quality. Tests assert selected regression cases and exercise actual Flask generation with a mocked model, verifying evidence injection and citation IDs. CI prints results. Japanese lexical segmentation is a known limitation and is measured rather than asserted as supported. This small synthetic benchmark does not establish production retrieval accuracy, factual grounding or live article quality.

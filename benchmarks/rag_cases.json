@@ -1,0 +1,137 @@
+[
+  {
+    "name": "gardening",
+    "topic": "indoor herb sunlight",
+    "texts": [
+      "Indoor herb plants need sunlight near a window.",
+      "Car engines require regular oil changes.",
+      "Indoor herb growers should monitor soil moisture and sunlight."
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "software",
+    "topic": "Python API authentication",
+    "texts": [
+      "A Python API can validate authentication tokens on incoming requests.",
+      "Cooking rice requires water.",
+      "API authentication should reject expired tokens."
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "finance",
+    "topic": "monthly household budget",
+    "texts": [
+      "Monthly household budget planning tracks income and expenses.",
+      "A mountain bike needs regular servicing.",
+      "A household budget can include monthly emergency savings."
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "spanish",
+    "topic": "cultivo tomates balcón",
+    "texts": [
+      "El cultivo de tomates en un balcón requiere luz solar.",
+      "Los trenes conectan ciudades.",
+      "Para tomates de balcón conviene usar macetas."
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "french",
+    "topic": "isolation thermique maison",
+    "texts": [
+      "L'isolation thermique d'une maison réduit les pertes de chaleur.",
+      "La musique classique utilise des instruments.",
+      "Pour une maison, l'isolation thermique du toit est importante."
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "urdu",
+    "topic": "گھر باغبانی پودے",
+    "texts": [
+      "گھر میں باغبانی کے لیے پودے اور روشنی اہم ہیں۔",
+      "گاڑی کے انجن کو تیل چاہیے۔",
+      "باغبانی میں پودے مناسب پانی سے بڑھتے ہیں۔"
+    ],
+    "relevant": [
+      1,
+      3
+    ]
+  },
+  {
+    "name": "no_match",
+    "topic": "volcanic eruption",
+    "texts": [
+      "Indoor herbs require water.",
+      "Cars require fuel."
+    ],
+    "relevant": []
+  },
+  {
+    "name": "semantic_paraphrase",
+    "topic": "car maintenance",
+    "texts": [
+      "Automobiles require regular servicing.",
+      "Flowers need water."
+    ],
+    "relevant": [
+      1
+    ],
+    "mock_vectors": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  {
+    "name": "partial_overlap",
+    "topic": "solar panel installation",
+    "texts": [
+      "Solar panel installation requires suitable roof orientation and mounting.",
+      "Solar eclipses occur when the moon obscures the sun.",
+      "Panel installation for a kitchen cabinet uses brackets."
+    ],
+    "relevant": [
+      1
+    ]
+  },
+  {
+    "name": "unsegmented_japanese",
+    "topic": "太陽光発電",
+    "texts": [
+      "住宅の太陽光発電には屋根の条件が重要です。",
+      "料理には水が必要です。"
+    ],
+    "relevant": [
+      1
+    ]
+  }
+]
