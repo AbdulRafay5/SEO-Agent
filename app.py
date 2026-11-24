@@ -52,20 +52,28 @@ def _safe_listdir(path):
         return []
 
 
-def _load_manifest():
-    content, _ = github_store.get_file(MANIFEST_PATH)
+def _load_manifest(strict=False):
+    try:
+        content, _ = github_store.get_file(MANIFEST_PATH)
+    except Exception:
+        if strict:
+            raise
+        app.logger.warning("Draft index unavailable")
+        return []
     if not content:
         return []
     try:
         data = json.loads(content)
-        return data if isinstance(data, list) else []
+        return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
     except ValueError:
+        if strict:
+            raise
         return []
 
 
 def _upsert_manifest_entry(entry):
     try:
-        manifest = _load_manifest()
+        manifest = _load_manifest(strict=True)
         manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
         manifest.insert(0, entry)
         github_store.save_file(
@@ -587,7 +595,7 @@ def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
 
         title = limit_words(title, max_words=12)
 
-        if len(title.split()) < 3 or not re.search(r"[A-Za-z]", title):
+        if len(title.split()) < 3 or not any(ch.isalpha() for ch in title):
             continue
 
         if title.lower() in {item["title"].lower() for item in options}:
@@ -629,7 +637,7 @@ def extract_ai_title_candidates(raw_text):
 
         cleaned = limit_words(cleaned, max_words=12)
 
-        if len(cleaned.split()) < 3 or not re.search(r"[A-Za-z]", cleaned):
+        if len(cleaned.split()) < 3 or not any(ch.isalpha() for ch in cleaned):
             continue
 
         if cleaned.lower() in {title.lower() for title in candidates}:
@@ -723,7 +731,11 @@ Output only the article."""
 @app.route("/")
 def home():
     local_files = set(_safe_listdir(BUNDLED_BLOGS_FOLDER) + _safe_listdir(BLOGS_FOLDER))
-    repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
+    try:
+        repo_files = set(github_store.list_dir(DRAFTS_REPO_DIR))
+    except Exception:
+        app.logger.warning("Remote drafts unavailable; displaying local drafts")
+        repo_files = set()
     files = sorted(f for f in local_files | repo_files if f.endswith(".md"))
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
     return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
@@ -746,7 +758,10 @@ def api_get_blog(filename):
         with open(bundled_filepath, "r", encoding="utf-8") as f:
             raw_text = f.read()
     else:
-        raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+        try:
+            raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+        except Exception:
+            return jsonify({"error": "Remote draft storage is unavailable. Try again later."}), 503
 
     if raw_text is None:
         return jsonify({"error": "Article not found."}), 404
@@ -777,7 +792,10 @@ def view_blog(filename):
         with open(bundled_filepath, "r", encoding="utf-8") as f:
             raw_text = f.read()
     else:
-        raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+        try:
+            raw_text, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{safe_filename}")
+        except Exception:
+            abort(503)
         if raw_text is None:
             abort(404)
 
@@ -1093,7 +1111,7 @@ def api_keyword_research():
 
 @app.route("/api/titles/<path:keyword>")
 def api_titles(keyword):
-    keyword = unquote_plus(keyword or "").strip()
+    keyword = (keyword or "").strip()
     if not keyword:
         return jsonify({"error": "Please enter a keyword first."}), 400
 

@@ -734,7 +734,7 @@ select.field-input{padding-left:12px;cursor:pointer}
           <div class="metric-item">
             <div class="metric-label">
               <span>Density</span>
-              <span id="metric-density-label">0.0 / 8</span>
+              <span id="metric-density-label">0.0 per 1k words</span>
             </div>
             <div class="metric-bar"><div class="metric-fill" id="metric-density-bar"></div></div>
           </div>
@@ -1013,7 +1013,8 @@ select.field-input{padding-left:12px;cursor:pointer}
 /* ─── constants ─── */
 
 
-function safeMarkdown(value){return DOMPurify.sanitize(marked.parse(value));}
+function escapeText(value){const node=document.createElement('span');node.textContent=String(value??'');return node.innerHTML;}
+function safeMarkdown(value){return typeof DOMPurify!=='undefined'&&typeof marked!=='undefined'?DOMPurify.sanitize(marked.parse(value)):escapeText(value);}
 
 /* ─── state ─── */
 let allKeywords=[];
@@ -1032,8 +1033,31 @@ let pendingConfirmAction=null;
 let sidebarCollapsed=false;
 let selectedTrendTimeframe='1m';
 
-try{savedBlogs=JSON.parse(localStorage.getItem('seo_studio_blogs')||'[]')}catch(e){savedBlogs=[]}
-try{hiddenServerFiles=JSON.parse(localStorage.getItem('seo_studio_hidden_files')||'[]')}catch(e){hiddenServerFiles=[]}
+// Migrate a single recognizable previous studio namespace on the same origin.
+function migratePreviousStudioStorage(){
+  try{
+    const current='seo_studio';
+    const prefixes=Object.keys(localStorage).filter(k=>k.endsWith('_blogs')).map(k=>k.slice(0,-6)).filter(p=>p!==current&&localStorage.getItem(p+'_hidden_files')!==null&&localStorage.getItem(p+'_theme')!==null);
+    if(prefixes.length!==1)return;
+    const prefix=prefixes[0];
+    for(const suffix of ['blogs','hidden_files','theme','sidebar_collapsed','settings_open']){
+      const key=current+'_'+suffix;
+      if(localStorage.getItem(key)!==null)continue;
+      const value=localStorage.getItem(prefix+'_'+suffix);
+      if(value===null)continue;
+      if(suffix==='blogs'||suffix==='hidden_files'){
+        const parsed=JSON.parse(value);
+        if(!Array.isArray(parsed))continue;
+        if(suffix==='blogs'&&!parsed.every(b=>b&&typeof b.filename==='string'&&typeof b.keyword==='string'))continue;
+        if(suffix==='hidden_files'&&!parsed.every(f=>typeof f==='string'))continue;
+      }
+      localStorage.setItem(key,value);
+    }
+  }catch(e){}
+}
+migratePreviousStudioStorage();
+try{savedBlogs=JSON.parse(localStorage.getItem('seo_studio_blogs')||'[]');if(!Array.isArray(savedBlogs))savedBlogs=[]}catch(e){savedBlogs=[]}
+try{hiddenServerFiles=JSON.parse(localStorage.getItem('seo_studio_hidden_files')||'[]');if(!Array.isArray(hiddenServerFiles))hiddenServerFiles=[]}catch(e){hiddenServerFiles=[]}
 try{currentTheme=localStorage.getItem('seo_studio_theme')||'light'}catch(e){}
 try{sidebarCollapsed=localStorage.getItem('seo_studio_sidebar_collapsed')==='1'}catch(e){}
 try{const s=localStorage.getItem('seo_studio_settings_open');if(s==='1')openSettings()}catch(e){}
@@ -1186,12 +1210,13 @@ function renderRecentDrafts(){
   if(!recent.length){sec.innerHTML='';if(et)et.textContent='Start your first article';return;}
   if(et)et.textContent='Start a new article';
   sec.innerHTML=`<div class="section-label" style="margin-top:12px">Recent drafts</div><div class="draft-list">${
-    recent.map(b=>`<div class="draft-row" onclick="openDraft('${b.filename}')">
+    recent.map(b=>`<div class="draft-row" data-draft-filename="${escapeText(b.filename).replace(/"/g,'&quot;')}">
       <i data-lucide="file-text" style="width:16px;height:16px;color:var(--muted);flex-shrink:0" aria-hidden="true"></i>
-      <span class="draft-title">${b.keyword}</span>
+      <span class="draft-title">${escapeText(b.keyword)}</span>
       <span class="draft-meta">${b.wordCount?b.wordCount.toLocaleString()+' words':'Draft'}</span>
     </div>`).join('')
   }</div>`;
+  sec.querySelectorAll('[data-draft-filename]').forEach(row=>row.addEventListener('click',()=>openDraft(row.dataset.draftFilename)));
   lucide.createIcons();
 }
 
@@ -1397,7 +1422,7 @@ function updateMetrics(data){
   // labels
   const wLabel=words>=2000?'Target reached':words.toLocaleString()+' / 2,000';
   document.getElementById('metric-words-label').textContent=wLabel;
-  document.getElementById('metric-density-label').textContent=density.toFixed(1)+' / 8';
+  document.getElementById('metric-density-label').textContent=density.toFixed(1)+' per 1k words';
   document.getElementById('metric-checks-label').textContent=checks+' / 3';
 
   // bars (animate)
@@ -1405,13 +1430,13 @@ function updateMetrics(data){
   const dBar=document.getElementById('metric-density-bar');
   const cBar=document.getElementById('metric-checks-bar');
   if(wBar)wBar.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
-  if(dBar)dBar.style.width=Math.min(100,Math.round((density/8)*100))+'%';
+  if(dBar)dBar.style.width='0%';
   if(cBar)cBar.style.width=Math.round((checks/3)*100)+'%';
 
   // health chip
   const chip=document.getElementById('metric-health');
   if(chip){
-    if(words>=2000&&density>=8){chip.textContent='Ready';chip.className='status-chip status-ready';}
+    if(words>=2000){chip.textContent='Ready';chip.className='status-chip status-ready';}
     else{chip.textContent='Needs work';chip.className='status-chip status-warn';}
   }
 
@@ -1520,8 +1545,8 @@ async function fetchTitleOptions(){
         card.innerHTML=`
           <div>
             <div class="brainstorm-num">Option ${i+1}</div>
-            <div class="brainstorm-text">${titleText}</div>
-            <div style="margin-top:6px;font-size:12px;color:var(--muted)">Meta: ${metaText}</div>
+            <div class="brainstorm-text">${escapeText(titleText)}</div>
+            <div style="margin-top:6px;font-size:12px;color:var(--muted)">Meta: ${escapeText(metaText)}</div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span class="bc-check" style="display:none;align-items:center;gap:4px;font-size:13px;color:var(--accent)">
@@ -1828,7 +1853,7 @@ async function queryBackendTrends(){
       const pct=mx?Math.round((r.value/mx)*100):0;
       const d=document.createElement('div');
       d.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0';
-      d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.region}">${r.region}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
+      d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeText(r.region)}">${escapeText(r.region)}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
       rl.appendChild(d);
     });
     lucide.createIcons();
@@ -1936,20 +1961,22 @@ function renderRepositoryCards(){
     card.innerHTML=`
       <div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px">
-          <span>${blog.createdAt}</span>
+          <span>${escapeText(blog.createdAt)}</span>
           <span style="font-family:var(--mono);font-weight:600;color:var(--accent)">${(blog.wordCount||'').toLocaleString()} words</span>
         </div>
-        <div style="font-weight:700;font-size:14px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${blog.keyword}</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${blog.preview||''}</div>
+        <div style="font-weight:700;font-size:14px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeText(blog.keyword)}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${escapeText(blog.preview||'')}</div>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
           <div style="display:flex;gap:4px;margin-left:auto">
-          <button onclick="openDraft('${blog.filename}')" class="btn btn-ghost btn-sm" style="font-size:12px">Load in Studio</button>
-          <button onclick="requestDeleteBlog('${blog.filename}')" class="btn btn-danger btn-sm" aria-label="Delete article">
+          <button data-action="open" class="btn btn-ghost btn-sm" style="font-size:12px">Load in Studio</button>
+          <button data-action="delete" class="btn btn-danger btn-sm" aria-label="Delete article">
             <i data-lucide="trash-2" style="width:14px;height:14px" aria-hidden="true"></i>
           </button>
         </div>
       </div>`;
+    card.querySelector('[data-action="open"]').addEventListener('click',()=>openDraft(blog.filename));
+    card.querySelector('[data-action="delete"]').addEventListener('click',()=>requestDeleteBlog(blog.filename));
     grid.appendChild(card);
   });
   lucide.createIcons();
@@ -1988,7 +2015,7 @@ function showToast(message,type='success'){
   const toast=document.createElement('div');
   toast.className='toast '+type;
   toast.setAttribute('role','status');
-  toast.innerHTML=`<span class="toast-dot"></span><span>${message}</span>`;
+  toast.innerHTML=`<span class="toast-dot"></span><span>${escapeText(message)}</span>`;
   container.appendChild(toast);
   setTimeout(()=>{
     toast.classList.add('out');

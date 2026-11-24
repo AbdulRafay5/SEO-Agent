@@ -27,3 +27,7 @@ Open Keyword research, enter a seed topic, choose a language and optional countr
 ## SEO analysis
 
 Open an article and click SEO analysis. The editorial checklist measures headings, title, topic placement, metadata, paragraph length and image descriptions without AI calls. It is not a ranking prediction. The optional description is editable and the analysis can be refreshed.
+
+### Upgrading an existing installation
+
+Set GEMINI_API_KEY or GROQ_API_KEY and optional PEXELS_API_KEY in the deployment environment. Credentials previously stored in a datastore settings file are no longer loaded; rotate any keys that were committed. The browser attempts a one-time migration of a recognizable previous studio storage namespace on the same origin if the current keys are absent. Old keys are retained. A different deployment domain has separate browser storage.
