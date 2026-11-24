@@ -2,7 +2,11 @@
 import json
 import math
 import re
-from collections import Counter
+from collections import Counter, OrderedDict
+from array import array
+from hashlib import sha256
+from threading import Lock
+from time import monotonic
 from urllib.parse import urlsplit
 
 STOP_WORDS = set("a an the and or of to in on for with is are what how why this that from by at be as it".split())
@@ -157,3 +161,74 @@ def evidence_prompt(passages):
             "Search snippets are short discovery leads, not full documents. Do not rely on them alone for precise factual, legal, medical or numerical claims. Only webpage-labelled sources represent extracted page text. Do not imply that other URLs were fetched or that any evidence is independently verified. "
             "Do not invent evidence, and flag unsupported material claims. "
             "The article must remain in the requested language.\n" + json.dumps(evidence, ensure_ascii=False))
+
+
+class EmbeddingCache:
+    """Bounded process-local LRU cache with expiration.
+
+    Stores content hashes and numeric vectors, not source text. Intended
+    only for an authenticated single-owner workspace.
+    """
+    def __init__(self, capacity=256, ttl=1800, clock=monotonic):
+        self.capacity = capacity
+        self.ttl = ttl
+        self.clock = clock
+        self._entries = OrderedDict()
+        self._lock = Lock()
+
+    @staticmethod
+    def key(namespace, text):
+        return sha256(json.dumps([namespace, text], ensure_ascii=False).encode("utf-8")).digest()
+
+    def _prune(self, now):
+        for key, (expires, _) in list(self._entries.items()):
+            if expires <= now:
+                del self._entries[key]
+
+    def embed(self, namespace, texts, provider):
+        keys = [self.key(namespace, text) for text in texts]
+        with self._lock:
+            self._prune(self.clock())
+            found = {}
+            for key in keys:
+                if key in self._entries:
+                    found[key] = self._entries[key][1]
+                    self._entries.move_to_end(key)
+            missing = {}
+            for key, text in zip(keys, texts):
+                if key not in found:
+                    missing.setdefault(key, text)
+        if missing:
+            # Never hold a shared lock while calling a remote provider.
+            raw = provider(list(missing.values()))
+            if len(raw) != len(missing):
+                raise ValueError("Incomplete embedding response.")
+            vectors = []
+            dimension = None
+            for vector in raw:
+                if not vector or len(vector) > 4096:
+                    raise ValueError("Invalid embedding dimensions.")
+                packed = array("f", vector)
+                if not all(math.isfinite(x) for x in packed) or not any(packed):
+                    raise ValueError("Invalid embedding vector.")
+                if dimension is None:
+                    dimension = len(packed)
+                elif dimension != len(packed):
+                    raise ValueError("Inconsistent embedding dimensions.")
+                vectors.append(packed)
+            if found and any(len(v) != dimension for v in found.values()):
+                # The provider may have changed the model's output shape.
+                # Clear cached values instead of mixing incompatible vectors.
+                with self._lock:
+                    self._entries.clear()
+                return provider(texts)
+            with self._lock:
+                now = self.clock()
+                self._prune(now)
+                for key, vector in zip(missing, vectors):
+                    found[key] = vector
+                    self._entries[key] = (now + self.ttl, vector)
+                    self._entries.move_to_end(key)
+                while len(self._entries) > self.capacity:
+                    self._entries.popitem(last=False)
+        return [list(found[key]) for key in keys]

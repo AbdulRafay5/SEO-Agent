@@ -23,13 +23,15 @@ from keywords import all_keywords
 import github_store
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
-from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt
+from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt, EmbeddingCache
+from hashlib import sha256
 from web_evidence import extract_page
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 64 * 1024
 _generation_lock = Lock()
+_embedding_cache = EmbeddingCache()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOTENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -1409,14 +1411,25 @@ def select_evidence(topic, sources, mode):
     if not gemini_client or os.getenv("SEO_SEMANTIC_RETRIEVAL", "") != "1":
         return retrieve(topic, sources), "BM25 fallback"
 
-    def embed(texts):
-        model = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+    model = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+
+    def provider(texts):
         vectors = []
         for start in range(0, len(texts), 16):
             response = gemini_client.models.embed_content(
                 model=model, contents=texts[start:start + 16])
             vectors.extend(list(item.values) for item in response.embeddings)
         return vectors
+
+    def embed(texts):
+        # Caching is deliberately unavailable for anonymous/shared deployments.
+        owner_mode = os.getenv("SEO_OWNER_AUTH", "").strip().lower() in {"1", "true", "on"}
+        if os.getenv("SEO_EMBEDDING_CACHE", "") != "1" or not owner_mode:
+            return provider(texts)
+        owner_scope = sha256(json.dumps([os.getenv("SEO_OWNER_USERNAME", ""),
+                                         os.getenv("SEO_OWNER_PASSWORD", ""),
+                                         os.getenv("GEMINI_API_KEY", "")]).encode()).hexdigest()
+        return _embedding_cache.embed(["gemini", model, owner_scope], texts, provider)
 
     return retrieve_hybrid(topic, sources, embed)
 
