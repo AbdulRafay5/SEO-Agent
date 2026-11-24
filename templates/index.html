@@ -673,6 +673,17 @@ select.field-input{padding-left:12px;cursor:pointer}
             <div id="evidence-search-results" style="display:grid;gap:6px;max-height:260px;overflow:auto"></div>
             <label class="field-label" for="evidence-mode">Retrieval method</label>
             <select id="evidence-mode" class="field-input no-icon"><option value="lexical">BM25 keyword matching</option><option value="hybrid">Hybrid semantic matching (optional Gemini embeddings)</option></select>
+            <details style="border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin:8px 0" id="knowledge-library">
+              <summary style="cursor:pointer;font-weight:600" onclick="renderKnowledgeLibrary()">Saved research library</summary>
+              <p style="font-size:12px;color:var(--muted);margin:6px 0">Saved in this browser only. Do not save confidential research on shared devices.</p>
+              <input id="knowledge-filter" class="field-input no-icon" placeholder="Filter by topic, title or source" aria-label="Filter saved research" oninput="renderKnowledgeLibrary()">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+                <button class="btn btn-secondary btn-sm" onclick="saveEvidenceLibrary()">Save current sources</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportEvidenceLibrary()">Export research JSON</button>
+              </div>
+              <p id="knowledge-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
+              <div id="knowledge-results" style="display:grid;gap:6px;max-height:300px;overflow:auto"></div>
+            </details>
             <div id="evidence-inputs"></div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"><button class="btn btn-secondary btn-sm" onclick="addEvidenceSource()">Add source</button><button class="btn btn-secondary btn-sm" id="evidence-preview-btn" onclick="previewEvidence()">Preview relevant evidence</button></div>
             <p id="evidence-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
@@ -2105,7 +2116,7 @@ function addEvidenceSource(entry=null){
   row.innerHTML='<input class="field-input no-icon" data-evidence-title maxlength="240" placeholder="Source title" aria-label="Evidence title"><input class="field-input no-icon" data-evidence-url maxlength="2048" placeholder="Source URL (optional)" aria-label="Evidence URL"><textarea class="field-input no-icon" data-evidence-text maxlength="12000" rows="4" placeholder="Paste relevant source text" aria-label="Evidence text"></textarea>';
   const kind=document.createElement('select');kind.className='field-input no-icon';kind.setAttribute('aria-label','Evidence source type');kind.dataset.evidenceKind='';
   for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet'],['webpage','Extracted webpage']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);
-  if(entry){kind.value='search_snippet';row.querySelector('[data-evidence-title]').value=entry.title.slice(0,240);row.querySelector('[data-evidence-url]').value=entry.url;row.querySelector('[data-evidence-text]').value=entry.snippet;}
+  if(entry){kind.value=entry.kind||'search_snippet';row.querySelector('[data-evidence-title]').value=(entry.title||'').slice(0,240);row.querySelector('[data-evidence-url]').value=entry.url||'';row.querySelector('[data-evidence-text]').value=entry.text??entry.snippet??'';}
   const extract=document.createElement('button');extract.className='btn btn-secondary btn-sm';extract.textContent='Extract webpage';
   extract.onclick=async()=>{
     const url=row.querySelector('[data-evidence-url]').value.trim();
@@ -2128,6 +2139,76 @@ function addEvidenceSource(entry=null){
 }
 function readEvidenceSources(){
   return [...document.getElementById('evidence-inputs').children].map(row=>({title:row.querySelector('[data-evidence-title]').value.trim(),url:row.querySelector('[data-evidence-url]').value.trim(),text:row.querySelector('[data-evidence-text]').value.trim(),kind:row.querySelector('[data-evidence-kind]').value})).filter(source=>source.title||source.url||source.text);
+}
+const knowledgeKey='seo_studio_evidence_library_v1';
+function readKnowledgeLibrary(){
+  const raw=localStorage.getItem(knowledgeKey);
+  if(raw===null)return [];
+  const rows=JSON.parse(raw);
+  if(!Array.isArray(rows)||rows.some(row=>!row||typeof row.id!=='string'||['title','url','text','kind','topic','savedAt'].some(key=>typeof row[key]!=='string')))throw new Error('Saved research could not be read. Existing data has not been overwritten.');
+  return rows;
+}
+function knowledgeIdentity(source){
+  return JSON.stringify([source.url.trim(),source.text.trim().replace(/\s+/g,' '),source.kind]);
+}
+function writeKnowledgeLibrary(rows){
+  localStorage.setItem(knowledgeKey,JSON.stringify(rows));
+}
+function saveEvidenceLibrary(){
+  const status=document.getElementById('knowledge-status');
+  try{
+    const sources=readEvidenceSources();
+    if(!sources.length||sources.some(source=>!source.text.trim()||source.text.length>12000||source.title.length>240||source.url.length>2048))throw new Error('Add complete source excerpts first.');
+    if(sources.reduce((n,source)=>n+source.text.length,0)>30000)throw new Error('Current evidence exceeds the 30000-character limit.');
+    for(const source of sources){
+      if(source.url){let url;try{url=new URL(source.url);}catch(e){throw new Error('Use valid HTTP or HTTPS source URLs.');}if(!['http:','https:'].includes(url.protocol)||!url.hostname||url.username||url.password)throw new Error('Use valid HTTP or HTTPS source URLs.');}
+    }
+    const rows=readKnowledgeLibrary(),seen=new Set(rows.map(knowledgeIdentity));
+    const topic=document.getElementById('target-keyword').value.trim();
+    let added=0;
+    for(const source of sources){
+      const identity=knowledgeIdentity(source);
+      if(seen.has(identity))continue;
+      const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
+      rows.unshift({...source,id,topic,savedAt:new Date().toISOString()});seen.add(identity);added++;
+    }
+    if(rows.length>100||rows.reduce((n,row)=>n+row.text.length,0)>500000)throw new Error('Research library is full. Export and remove unused sources first.');
+    writeKnowledgeLibrary(rows);renderKnowledgeLibrary();
+    status.textContent=added+' new source(s) saved in this browser; '+(sources.length-added)+' duplicate(s) skipped.';
+  }catch(error){status.textContent=error.message||'Research could not be saved.';}
+}
+function renderKnowledgeLibrary(){
+  const results=document.getElementById('knowledge-results'),status=document.getElementById('knowledge-status');
+  results.replaceChildren();
+  try{
+    const rows=readKnowledgeLibrary(),query=document.getElementById('knowledge-filter').value.trim().toLowerCase();
+    const filtered=rows.filter(row=>[row.topic,row.title,row.url,row.text].some(value=>value.toLowerCase().includes(query)));
+    status.textContent=filtered.length+' of '+rows.length+' saved sources';
+    for(const source of filtered){
+      const box=document.createElement('div');box.style.cssText='border:1px solid var(--border);padding:8px;font-size:12px;overflow-wrap:anywhere';
+      const title=document.createElement('strong');title.textContent=source.title||'Untitled source';
+      const details=document.createElement('p');details.textContent=(source.topic||'General research')+' · '+source.kind.replaceAll('_',' ')+' · '+source.text.slice(0,140);
+      const use=document.createElement('button');use.className='btn btn-secondary btn-sm';use.textContent='Reuse source';
+      use.onclick=()=>{
+        const active=readEvidenceSources();
+        if(active.some(row=>knowledgeIdentity(row)===knowledgeIdentity(source))){status.textContent='This source is already selected.';return;}
+        if(document.getElementById('evidence-inputs').children.length>=5||active.reduce((n,row)=>n+row.text.length,0)+source.text.length>30000){status.textContent='Current evidence is full; remove an active source first.';return;}
+        addEvidenceSource(source);status.textContent='Source added to current evidence.';
+      };
+      const remove=document.createElement('button');remove.className='btn btn-secondary btn-sm';remove.textContent='Remove saved source';
+      remove.onclick=()=>{try{if(!confirm('Remove this saved research source?'))return;writeKnowledgeLibrary(readKnowledgeLibrary().filter(row=>row.id!==source.id));renderKnowledgeLibrary();}catch(error){status.textContent='Could not remove source.';}};
+      box.append(title,details,use,remove);results.appendChild(box);
+    }
+  }catch(error){status.textContent=error.message||'Research library unavailable.';}
+}
+function exportEvidenceLibrary(){
+  const status=document.getElementById('knowledge-status');
+  try{
+    const rows=readKnowledgeLibrary();
+    const url=URL.createObjectURL(new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download='seo_research_library.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    status.textContent='Research export requested.';
+  }catch(error){status.textContent=error.message||'Research export failed.';}
 }
 function renderEvidenceResults(passages){
   const results=document.getElementById('evidence-results');results.replaceChildren();
