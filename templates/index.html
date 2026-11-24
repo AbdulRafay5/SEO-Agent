@@ -943,6 +943,18 @@ select.field-input{padding-left:12px;cursor:pointer}
           <button id="research-btn" class="btn btn-primary btn-sm" onclick="researchKeywords()">Discover keywords</button>
           <button class="btn btn-secondary btn-sm" onclick="exportKeywords()">Export CSV</button>
         </div>
+        <details style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:16px">
+          <summary style="cursor:pointer;font-weight:600">Competitor research</summary>
+          <p style="font-size:13px;color:var(--muted);margin:8px 0">Compare up to five search results you supply. Paste titles and page headings; no automatic fetching or live ranking claims.</p>
+          <div id="competitor-inputs"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
+            <button class="btn btn-secondary btn-sm" onclick="addCompetitorInput()">Add competitor</button>
+            <button class="btn btn-primary btn-sm" id="compare-competitors-btn" onclick="compareCompetitors()">Compare competitors</button>
+            <label style="font-size:13px"><input type="checkbox" id="compare-current-draft"> Compare with current article</label>
+          </div>
+          <p id="competitor-status" aria-live="polite" style="font-size:13px;color:var(--muted)"></p>
+          <div id="competitor-results" style="display:grid;gap:8px"></div>
+        </details>
         <p id="research-status" style="font-size:13px;color:var(--muted);margin-bottom:12px" aria-live="polite">Starter ideas shown below. Research any topic to get relevant suggestions.</p>
         <div class="data-table-wrap">
           <table class="data-table">
@@ -1920,6 +1932,31 @@ async function researchKeywords(){
     status.textContent=researchRows.length+' keywords · '+data.region+' · AI: '+data.ai_status+' · Trends: '+data.trend_status+'. Search volume and difficulty are not measured.';
   }catch(err){status.textContent=err.message||'Research unavailable';}
   finally{btn.disabled=false;}
+}
+function addCompetitorInput(){
+  const wrap=document.getElementById('competitor-inputs');
+  if(wrap.children.length>=5){showToast('Maximum five competitors','warning');return;}
+  const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
+  row.innerHTML='<input class="field-input no-icon" data-competitor-url placeholder="https://example.com/article" aria-label="Competitor URL"><input class="field-input no-icon" data-competitor-title placeholder="Search result or page title" aria-label="Competitor title"><textarea class="field-input no-icon" data-competitor-headings rows="3" placeholder="Paste H2/H3 headings, one per line" aria-label="Competitor headings"></textarea>';
+  const button=document.createElement('button');button.className='btn btn-secondary btn-sm';button.textContent='Remove competitor';button.onclick=()=>row.remove();row.appendChild(button);wrap.appendChild(row);
+}
+async function compareCompetitors(){
+  const topic=document.getElementById('research-topic').value.trim();
+  const competitors=[...document.getElementById('competitor-inputs').children].map(row=>({url:row.querySelector('[data-competitor-url]').value.trim(),title:row.querySelector('[data-competitor-title]').value.trim(),headings:row.querySelector('[data-competitor-headings]').value}));
+  const status=document.getElementById('competitor-status'),results=document.getElementById('competitor-results'),button=document.getElementById('compare-competitors-btn');
+  if(!topic||!competitors.length){status.textContent='Enter a research topic and add at least one competitor.';return;}
+  button.disabled=true;status.textContent='Comparing supplied results…';results.replaceChildren();
+  try{
+    const draft=document.getElementById('compare-current-draft').checked?rawBlogContent:'';
+    const res=await fetch('/api/competitors/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,competitors,draft})});
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Comparison failed');
+    status.textContent=data.source+'. '+data.note;
+    const add=(title,detail)=>{const box=document.createElement('div');box.style.cssText='padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px';const heading=document.createElement('strong');heading.textContent=title;const text=document.createElement('div');text.textContent=detail;box.append(heading,text);results.appendChild(box);};
+    data.competitors.forEach(row=>add(row.title,row.domain+' · '+row.heading_count+' headings · Topic in title: '+(row.topic_in_title?'yes':'no')));
+    data.themes.forEach(theme=>add(theme.heading,theme.competitors+' of '+data.competitors.length+' competitors'+(theme.in_draft===null?'':theme.in_draft?' · In current draft':' · Not an exact heading in current draft')));
+  }catch(error){status.textContent=error.message||'Comparison unavailable';}
+  finally{button.disabled=false;}
 }
 function exportKeywords(){
   if(!researchRows){showToast('Research a topic before exporting','warning');return;}

@@ -20,6 +20,7 @@ from pytrends.request import TrendReq
 from keywords import all_keywords
 import github_store
 from seo_analysis import analyze_article
+from competitor_research import compare_competitors
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
@@ -1053,6 +1054,33 @@ def api_trends():
             response.status_code = 429
             response.headers["Retry-After"] = str(_TRENDS_RATE_LIMIT_TTL_SECONDS)
         return response
+
+
+@app.post("/api/competitors/compare")
+def api_compare_competitors():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    topic, entries, draft = data.get("topic", ""), data.get("competitors"), data.get("draft", "")
+    if not isinstance(topic, str) or not topic.strip() or len(topic) > 240:
+        return jsonify({"error": "Enter a topic of at most 240 characters."}), 400
+    if not isinstance(draft, str) or len(draft) > 30000:
+        return jsonify({"error": "Draft must be text of at most 30000 characters."}), 400
+    if not isinstance(entries, list) or not 1 <= len(entries) <= 5:
+        return jsonify({"error": "Provide one to five competitor results."}), 400
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return jsonify({"error": "Invalid competitor result."}), 400
+        for field, limit in {"url": 2048, "title": 300, "headings": 4000}.items():
+            value = entry.get(field, "")
+            if not isinstance(value, str) or len(value) > limit:
+                return jsonify({"error": f"Invalid competitor {field}."}), 400
+        if not entry.get("title", "").strip():
+            return jsonify({"error": "Provide a competitor title."}), 400
+    try:
+        return jsonify(compare_competitors(topic.strip(), entries, draft))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
 
 
 @app.post("/api/seo/analyze")

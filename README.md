@@ -31,3 +31,7 @@ Open an article and click SEO analysis. The editorial checklist measures heading
 ### Upgrading an existing installation
 
 Set GEMINI_API_KEY or GROQ_API_KEY and optional PEXELS_API_KEY in the deployment environment. Credentials previously stored in a datastore settings file are no longer loaded; rotate any keys that were committed. The browser attempts a one-time migration of a recognizable previous studio storage namespace on the same origin if the current keys are absent. Old keys are retained. A different deployment domain has separate browser storage.
+
+## Competitor comparison
+
+In Keyword research, expand Competitor research and add up to five search results with their URLs, titles and headings. Compare heading coverage against the current draft if desired. No provider key is needed. This is a manual SERP comparison, not live search scraping or rank tracking; headings are matched by normalized exact text.

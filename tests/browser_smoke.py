@@ -70,6 +70,13 @@ def main():
                 page.locator("#research-topic").fill("Indoor gardening")
                 page.locator("#research-btn").click()
                 expect(page.locator("#keywords-table-body")).to_contain_text("indoor herb garden")
+                page.get_by_text("Competitor research", exact=True).click()
+                page.get_by_role("button", name="Add competitor").click()
+                page.get_by_label("Competitor URL").fill("https://example.com/herbs")
+                page.get_by_label("Competitor title").fill("Indoor gardening")
+                page.get_by_label("Competitor headings").fill("Watering\nLight")
+                page.locator("#compare-competitors-btn").click()
+                expect(page.locator("#competitor-results")).to_contain_text("Watering")
                 page.locator("#keywords-table-body tr").filter(has_text="indoor herb garden").get_by_role("button", name="Use in Studio").click()
                 expect(page.locator("#target-keyword")).to_have_value("indoor herb garden")
                 assert not errors, errors
