@@ -1994,7 +1994,8 @@ async function saveRemoteVersion(){
     if(!serverFiles.includes(data.filename))serverFiles.push(data.filename);
     serverFileMeta[data.filename]=meta;
     updateHeaderCounters();
-    showToast(data.metadata_saved?'Separate version saved remotely':'Article saved remotely but metadata could not be saved','success');
+    const incomplete=!data.metadata_saved||(data.evidence_expected&&!data.evidence_saved);
+    showToast(incomplete?'Article saved remotely but metadata or evidence could not be saved':'Separate version saved remotely',incomplete?'warning':'success');
   }catch(error){showToast(error.message||'Remote save unavailable','error');}
   finally{button.disabled=false;}
 }
@@ -2107,7 +2108,9 @@ function setTrendTimeframe(tf,btn){
   queryBackendTrends();
 }
 
+let trendsRequestId=0;
 async function queryBackendTrends(){
+  const requestId=++trendsRequestId;
   const kw=document.getElementById('trend-search-input').value.trim();
   const badge=document.getElementById('trends-source-badge');
   const rl=document.getElementById('trends-region-list');
@@ -2116,8 +2119,9 @@ async function queryBackendTrends(){
   if(!kw){showToast('Enter a keyword first','warning');return;}
   badge.textContent='Fetching…';
   try{
-    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe='+selectedTrendTimeframe+'&fresh=1&geo='+encodeURIComponent(document.getElementById('trend-geo').value.trim()));
+    const res=await fetch('/api/trends?keyword='+encodeURIComponent(kw)+'&timeframe='+selectedTrendTimeframe+'&geo='+encodeURIComponent(document.getElementById('trend-geo').value.trim()));
     const data=await res.json();
+    if(requestId!==trendsRequestId)return;
     const labels=data.chart_labels||data.interest_over_time?.labels||[];
     const values=data.chart_values||data.interest_over_time?.values||[];
     const regions=data.region_data||[];
@@ -2127,7 +2131,7 @@ async function queryBackendTrends(){
     if(!has){
       if(trendsChartInstance){trendsChartInstance.destroy();trendsChartInstance=null;}
       chart.style.display='none';empty.style.display='flex';
-      badge.textContent='No data';
+      badge.textContent=data.source==='rate-limited'?'Rate limited':data.source==='unavailable'?'Trends unavailable':'No data';
     }else{
       chart.style.display='block';empty.style.display='none';
       badge.textContent='Google Trends · '+(data.region_scope||'Worldwide');
@@ -2140,7 +2144,7 @@ async function queryBackendTrends(){
       const pct=mx?Math.round((r.value/mx)*100):0;
       const d=document.createElement('div');
       d.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0';
-      d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeText(r.region)}">${escapeText(r.region)}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
+      d.innerHTML=`<span style="width:80px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeText(r.region).replace(/"/g,'&quot;')}">${escapeText(r.region)}</span><div style="flex:1;height:5px;background:var(--border);border-radius:999px;overflow:hidden"><div style="height:100%;background:var(--accent);border-radius:999px;width:${pct}%"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);width:24px;text-align:right">${r.value}</span>`;
       rl.appendChild(d);
     });
     lucide.createIcons();
@@ -2214,7 +2218,9 @@ function addEvidenceSource(entry=null){
   const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
   row.innerHTML='<input class="field-input no-icon" data-evidence-title maxlength="240" placeholder="Source title" aria-label="Evidence title"><input class="field-input no-icon" data-evidence-url maxlength="2048" placeholder="Source URL (optional)" aria-label="Evidence URL"><textarea class="field-input no-icon" data-evidence-text maxlength="12000" rows="4" placeholder="Paste relevant source text" aria-label="Evidence text"></textarea>';
   const kind=document.createElement('select');kind.className='field-input no-icon';kind.setAttribute('aria-label','Evidence source type');kind.dataset.evidenceKind='';
-  for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet'],['webpage','Extracted webpage']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);
+  for(const [value,label] of [['excerpt','Pasted excerpt'],['search_snippet','Search snippet'],['webpage','Extracted webpage']]){const option=document.createElement('option');option.value=value;option.textContent=label;kind.appendChild(option);}row.prepend(kind);kind.disabled=true;
+  row.querySelector('[data-evidence-text]').addEventListener('input',()=>{kind.value='excerpt';});
+  row.querySelector('[data-evidence-url]').addEventListener('input',()=>{kind.value='excerpt';});
   if(entry){kind.value=entry.kind||'search_snippet';row.querySelector('[data-evidence-title]').value=(entry.title||'').slice(0,240);row.querySelector('[data-evidence-url]').value=entry.url||'';row.querySelector('[data-evidence-text]').value=entry.text??entry.snippet??'';}
   const extract=document.createElement('button');extract.className='btn btn-secondary btn-sm';extract.textContent='Extract webpage';
   extract.onclick=async()=>{
@@ -2360,15 +2366,18 @@ async function discoverEvidence(){
   finally{button.disabled=false;}
 }
 async function previewEvidence(){
+  const requestId=workspaceRequestId;
   const status=document.getElementById('evidence-status'),button=document.getElementById('evidence-preview-btn');
   button.disabled=true;status.textContent='Finding relevant passages…';
   try{
     const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,title:document.getElementById('article-heading').value.trim(),evidence_sources:readEvidenceSources(),evidence_mode:document.getElementById('evidence-mode').value})});
     const data=await readApiResponse(response);
+    if(requestId!==workspaceRequestId)return;
     if(!response.ok)throw new Error(data.error||'Evidence retrieval failed');
+    clearCitationReport();
     renderEvidenceResults(data.passages);
-    status.textContent=data.method+' · '+data.passages.length+' matching passages. Not independently verified.';
-  }catch(error){renderEvidenceResults([]);status.textContent=error.message||'Evidence retrieval failed';}
+    status.textContent=data.method+' · '+data.passages.length+' preview passages for the current input, not the saved article. Not independently verified.';
+  }catch(error){if(requestId===workspaceRequestId){clearCitationReport();renderEvidenceResults([]);status.textContent=error.message||'Evidence retrieval failed';}}
   finally{button.disabled=false;}
 }
 function addCompetitorInput(entry=null){

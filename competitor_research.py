@@ -13,6 +13,7 @@ def compare_competitors(topic, entries, draft=""):
     rows = []
     coverage = Counter()
     labels = {}
+    seen_urls = set()
     for entry in entries:
         url = entry.get("url", "").strip()
         title = entry.get("title", "").strip()
@@ -20,6 +21,10 @@ def compare_competitors(topic, entries, draft=""):
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Use a valid HTTP or HTTPS competitor URL.")
+        identity = (parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/") or "/", parsed.query)
+        if identity in seen_urls:
+            raise ValueError("Each competitor URL must be unique.")
+        seen_urls.add(identity)
         unique = {}
         for heading in headings:
             normalized = normalize(heading)

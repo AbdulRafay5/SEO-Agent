@@ -1124,6 +1124,14 @@ def save_remote_version():
     parent = data.get("version_of", "")
     if parent and not re.fullmatch(r"[A-Za-z0-9_-]+\.md", parent):
         return jsonify({"error": "Invalid source draft filename."}), 400
+    inherited = None
+    if parent and remote_evidence_enabled():
+        try:
+            parent_body, _ = github_store.get_file(f"{DRAFTS_REPO_DIR}/{parent}")
+            if isinstance(parent_body, str):
+                inherited = load_remote_evidence(parent, parent_body)
+        except Exception:
+            app.logger.warning("Parent article evidence unavailable")
     filename = f"remote_version_{uuid4().hex}.md"
     entry = {
         "filename": filename, "keyword": data.get("keyword", "").strip() or "Article",
@@ -1139,7 +1147,11 @@ def save_remote_version():
         return jsonify({"error": "Remote write could not be confirmed. Keep your local copy."}), 502
     # The Markdown file remains independently discoverable even if metadata fails.
     indexed = _upsert_manifest_entry(entry)
-    return jsonify({"filename": filename, "metadata": entry, "metadata_saved": bool(indexed)}), 201
+    evidence_saved = False
+    if inherited:
+        evidence_saved = save_remote_evidence(filename, content, inherited)
+    return jsonify({"filename": filename, "metadata": entry, "metadata_saved": bool(indexed),
+                    "evidence_expected": bool(inherited), "evidence_saved": evidence_saved}), 201
 
 
 def remote_evidence_enabled():
