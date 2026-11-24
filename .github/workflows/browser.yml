@@ -1,0 +1,19 @@
+name: Browser smoke checks
+on:
+  push:
+  pull_request:
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: npm install --no-save --no-package-lock lucide@0.468.0 marked@12.0.2 dompurify@3.2.6 chart.js@4.4.7
+      - run: PYTHONPATH=. python tests/browser_smoke.py

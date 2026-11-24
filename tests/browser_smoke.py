@@ -1,0 +1,84 @@
+"""Exercise the real browser UI and Flask routes without paid or live provider calls."""
+import os
+import tempfile
+import threading
+from pathlib import Path
+from unittest.mock import patch
+
+for key in ("GITHUB_TOKEN", "GITHUB_REPO", "GEMINI_API_KEY", "GROQ_API_KEY", "QWEN_API_KEY", "PEXELS_API_KEY"):
+    os.environ[key] = ""
+
+from playwright.sync_api import sync_playwright, expect
+from werkzeug.serving import make_server
+from app import app
+
+ARTICLE = "# Growing indoor herbs\n\nGrowing indoor herbs is a useful way to learn gardening.\n\n## Care\n\nWater when the soil is dry."
+TITLES = "\n".join(f"{i}. Growing indoor herbs: {name} || A practical guide to growing herbs indoors." for i, name in enumerate(["Care", "Containers", "Water", "Light", "Soil", "Harvest"], 1))
+KEYWORDS = '[{"keyword":"indoor herb garden","intent":"informational","cluster":"Gardening","article_angle":"Getting started"}]'
+
+
+def fake_ai(prompt, max_tokens):
+    return KEYWORDS if "keyword research assistant" in prompt else ARTICLE
+
+
+def main():
+    with tempfile.TemporaryDirectory() as folder, patch("app.BLOGS_FOLDER", folder), patch("app.BUNDLED_BLOGS_FOLDER", folder), patch("app.LAST_GEN_FILE", str(Path(folder) / "last.txt")), patch("app.MIN_WORD_COUNT", 5), patch("app.gemini_client", object()), patch("app.generate_ai_text", side_effect=fake_ai), patch("app.generate_title_text", return_value=TITLES), patch("app.fetch_trends_data", side_effect=RuntimeError("offline test")):
+        server = make_server("127.0.0.1", 0, app, threaded=True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                context = browser.new_context(viewport={"width": 1440, "height": 1000})
+                page = context.new_page()
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                # Keep browser checks deterministic: use real library builds installed by CI.
+                vendors = {
+                    "https://unpkg.com/lucide@latest": "node_modules/lucide/dist/umd/lucide.js",
+                    "https://cdn.jsdelivr.net/npm/marked/marked.min.js": "node_modules/marked/marked.min.js",
+                    "https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js": "node_modules/dompurify/dist/purify.min.js",
+                    "https://cdn.jsdelivr.net/npm/chart.js": "node_modules/chart.js/dist/chart.umd.js",
+                }
+                def external(route):
+                    path = vendors.get(route.request.url)
+                    if path:
+                        route.fulfill(path=path, content_type="application/javascript")
+                    else:
+                        route.abort()
+                page.route("https://**/*", external)
+                page.goto(f"http://127.0.0.1:{server.server_port}/")
+                expect(page.locator("#screen-studio")).to_be_visible()
+                expect(page.locator("#keywords-table-body tr").first).to_be_attached()
+                page.locator("#target-keyword").fill("Growing indoor herbs")
+                page.locator("#btn-fetch-titles").click()
+                expect(page.locator(".brainstorm-card").first).to_be_visible()
+                page.locator(".brainstorm-card").first.click()
+                page.locator("#generate-btn").click()
+                expect(page.locator("#markdown-rendered-view")).to_be_visible(timeout=20000)
+                expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
+                page.locator("#btn-view-raw").click()
+                expect(page.locator("#markdown-raw-view")).to_be_visible()
+                page.locator("#btn-seo-analysis").click()
+                expect(page.locator("#seo-analysis-summary")).to_contain_text("editorial score")
+                page.locator("#seo-analysis-panel").get_by_role("button", name="Close").click()
+                page.locator("#tab-btn-repository").click()
+                expect(page.locator("#repository-grid .repo-card").first).to_be_visible()
+                page.locator("#repository-grid").get_by_role("button", name="Load in Studio").first.click()
+                expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
+                page.locator("#tab-btn-keywords").click()
+                page.locator("#research-topic").fill("Indoor gardening")
+                page.locator("#research-btn").click()
+                expect(page.locator("#keywords-table-body")).to_contain_text("indoor herb garden")
+                page.locator("#keywords-table-body tr").filter(has_text="indoor herb garden").get_by_role("button", name="Use in Studio").click()
+                expect(page.locator("#target-keyword")).to_have_value("indoor herb garden")
+                assert not errors, errors
+                context.close()
+                browser.close()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+
+
+if __name__ == "__main__":
+    main()
