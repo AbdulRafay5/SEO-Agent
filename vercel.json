@@ -1,7 +1,7 @@
 {
   "functions": {
     "app.py": {
-      "includeFiles": "{templates/**,keywords.py,github_store.py,keyword_research.py}"
+      "includeFiles": "{templates/**,keywords.py,github_store.py,keyword_research.py,seo_analysis.py}"
     }
   }
 }

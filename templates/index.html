@@ -763,6 +763,10 @@ select.field-input{padding-left:12px;cursor:pointer}
             </li>
           </ul>
           <div class="article-tab-actions">
+            <button onclick="analyzeCurrentArticle()" id="btn-seo-analysis" class="icon-btn" aria-label="Analyze SEO">
+              <i data-lucide="list-checks" style="width:15px;height:15px" aria-hidden="true"></i>
+              <span style="font-size:13px">SEO analysis</span>
+            </button>
             <button onclick="copyCurrentContent()" id="btn-copy" class="icon-btn disabled" aria-label="Copy formatted" title="Copy as formatted content (ready to paste)">
               <i data-lucide="copy" style="width:15px;height:15px" aria-hidden="true"></i>
               <span style="font-size:13px">Copy</span>
@@ -774,6 +778,14 @@ select.field-input{padding-left:12px;cursor:pointer}
           </div>
         </div>
 
+        <section id="seo-analysis-panel" hidden style="border-bottom:1px solid var(--border);padding:14px;max-height:35vh;overflow:auto;background:var(--surface)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><strong>Editorial SEO checklist</strong><button class="btn btn-secondary btn-sm" onclick="document.getElementById('seo-analysis-panel').hidden=true">Close</button></div>
+          <label for="seo-description" class="field-label">Meta description (optional)</label>
+          <textarea id="seo-description" class="field-input no-icon" rows="2" maxlength="1000" placeholder="Enter or edit a search snippet"></textarea>
+          <button class="btn btn-secondary btn-sm" onclick="analyzeCurrentArticle()">Refresh analysis</button>
+          <p id="seo-analysis-summary" aria-live="polite" style="margin:8px 0;font-size:13px"></p>
+          <div id="seo-analysis-checks" style="display:grid;gap:6px"></div>
+        </section>
         <!-- Article content scroll -->
         <div class="article-content" id="article-content-area">
 
@@ -1143,6 +1155,7 @@ function openSettings(){
 
 /* ─── output state machine ─── */
 function setOutputState(state){
+  document.getElementById("seo-analysis-panel").hidden=true;
   const ids=['studio-empty-state','brainstorm-state','generation-loader','markdown-rendered-view','markdown-raw-view'];
   ids.forEach(id=>{
     const el=document.getElementById(id);
@@ -1186,6 +1199,7 @@ function openDraft(filename){
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
+  document.getElementById('seo-description').value='';
   document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
   document.getElementById('markdown-raw-view').value=blog.content;
   document.getElementById('target-keyword').value=blog.keyword||'';
@@ -1215,6 +1229,7 @@ async function loadDraftFromServer(filename){
     updateHeaderCounters();
 
     rawBlogContent=blog.content;
+  document.getElementById('seo-description').value='';
     document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
     document.getElementById('markdown-raw-view').value=blog.content;
     document.getElementById('target-keyword').value=blog.keyword||'';
@@ -1408,6 +1423,26 @@ function updateMetrics(data){
   const mhb=document.getElementById('metric-health-bar');if(mhb)mhb.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
 }
 
+async function analyzeCurrentArticle(){
+  if(!rawBlogContent.trim()){showToast('Generate or open an article first','warning');return;}
+  const panel=document.getElementById('seo-analysis-panel'),summary=document.getElementById('seo-analysis-summary'),checks=document.getElementById('seo-analysis-checks'),button=document.getElementById('btn-seo-analysis');
+  const snapshot=rawBlogContent;
+  panel.hidden=false;summary.textContent='Analyzing article…';checks.replaceChildren();button.disabled=true;
+  try{
+    const res=await fetch('/api/seo/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:snapshot,keyword:document.getElementById('target-keyword').value.trim(),description:document.getElementById('seo-description').value,language:document.getElementById('article-language').value})});
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Analysis failed');
+    if(rawBlogContent!==snapshot)return;
+    summary.textContent=data.score+'/100 editorial score · '+data.word_count+' words · '+data.keyword_count+' keyword mentions · '+data.link_count+' links · '+data.image_count+' images. '+data.note;
+    for(const check of data.checks){
+      const item=document.createElement('div');item.style.cssText='font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)';
+      const title=document.createElement('strong');title.textContent=check.name+' — '+check.status;title.style.color=check.status==='pass'?'var(--accent)':check.status==='review'?'var(--warn)':'var(--muted)';
+      const detail=document.createElement('div');detail.textContent=check.advice;item.append(title,detail);checks.appendChild(item);
+    }
+  }catch(err){summary.textContent=err.message||'Analysis unavailable';}
+  finally{button.disabled=false;}
+}
+
 /* ─── loading steps ─── */
 let _stepTimer=null;
 function startLoadingSteps(){
@@ -1576,6 +1611,7 @@ async function generateArticle(){
 
     stopLoadingSteps();
     rawBlogContent=data.content;
+    document.getElementById('seo-description').value=data.meta_description||'';
 
     // update metrics
     updateMetrics(data);
@@ -1660,7 +1696,7 @@ function toggleEditorMode(mode){
   }
 }
 
-function syncRawEdits(){rawBlogContent=document.getElementById('markdown-raw-view').value;}
+function syncRawEdits(){rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
 
 function copyCurrentContent(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}

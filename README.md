@@ -23,3 +23,7 @@ Run tests with `python -m unittest discover -s tests`.
 ## Keyword research
 
 Open Keyword research, enter a seed topic, choose a language and optional country code, then discover ideas. Live Google Trends is opt-in and can be rate limited. AI suggestions and inferred intent are estimates; Google Trends top scores are relative indices and rising values represent growth, not monthly searches. Export results as CSV or send a keyword to the article studio.
+
+## SEO analysis
+
+Open an article and click SEO analysis. The editorial checklist measures headings, title, topic placement, metadata, paragraph length and image descriptions without AI calls. It is not a ranking prediction. The optional description is editable and the analysis can be refreshed.

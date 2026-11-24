@@ -19,6 +19,7 @@ from groq import Groq
 from pytrends.request import TrendReq
 from keywords import all_keywords
 import github_store
+from seo_analysis import analyze_article
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
@@ -1034,6 +1035,21 @@ def api_trends():
             response.status_code = 429
             response.headers["Retry-After"] = str(_TRENDS_RATE_LIMIT_TTL_SECONDS)
         return response
+
+
+@app.post("/api/seo/analyze")
+def api_seo_analyze():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    for name, limit in {"content": 50000, "keyword": 240, "title": 300, "description": 1000, "language": 80}.items():
+        value = data.get(name, "")
+        if not isinstance(value, str) or len(value) > limit:
+            return jsonify({"error": f"Invalid {name}."}), 400
+    if not data.get("content", "").strip():
+        return jsonify({"error": "Add article content first."}), 400
+    return jsonify(analyze_article(data["content"], data.get("keyword", ""),
+                                   data.get("title", ""), data.get("description", ""), data.get("language", "")))
 
 
 @app.post("/api/keywords/research")
