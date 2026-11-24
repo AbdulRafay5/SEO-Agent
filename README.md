@@ -19,3 +19,7 @@ This is currently a single-user prototype. Do not expose publicly without authen
 POST `/api/generate` with JSON containing `primary_keyword` and optional `title`, `language`, `audience`, `market`, `purpose`, `tone`, `links`, and `secondary_keywords`. Credentials belong in environment variables, not GitHub files. Optional GitHub draft storage is intended for a private datastore only. Without a Pexels key, unmatched photos are omitted.
 
 Run tests with `python -m unittest discover -s tests`.
+
+## Keyword research
+
+Open Keyword research, enter a seed topic, choose a language and optional country code, then discover ideas. Live Google Trends is opt-in and can be rate limited. AI suggestions and inferred intent are estimates; Google Trends top scores are relative indices and rising values represent growth, not monthly searches. Export results as CSV or send a keyword to the article studio.

@@ -914,21 +914,33 @@ select.field-input{padding-left:12px;cursor:pointer}
       <div class="screen-inner">
         <div class="screen-header">
           <div>
-            <h1 class="screen-title">Keyword matrix</h1>
-            <div class="screen-desc">Explore topic ideas and use them in the article studio.</div>
+            <h1 class="screen-title">Keyword research</h1>
+            <div class="screen-desc">Discover related searches, long-tail ideas and semantic groups. AI suggestions are not measured search demand.</div>
           </div>
           <div class="input-wrap" style="width:220px">
             <span class="input-icon"><i data-lucide="search" style="width:14px;height:14px" aria-hidden="true"></i></span>
             <input id="matrix-search" oninput="filterKeywords()" type="text" class="field-input" style="min-height:38px" placeholder="Filter keywords…">
           </div>
         </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px">
+          <input id="research-topic" class="field-input no-icon" style="flex:1;min-width:180px" placeholder="Enter any topic" aria-label="Research topic">
+          <input id="research-language" class="field-input no-icon" style="width:125px" value="English" aria-label="Keyword language">
+          <input id="research-geo" class="field-input no-icon" maxlength="2" style="width:110px" placeholder="Worldwide" aria-label="Country code">
+          <select id="research-period" class="field-input no-icon" style="width:130px" aria-label="Timeframe"><option value="7d">7 days</option><option value="1m" selected>1 month</option><option value="12m">12 months</option></select>
+          <label style="font-size:13px"><input type="checkbox" id="research-trends"> Include live trends</label>
+          <button id="research-btn" class="btn btn-primary btn-sm" onclick="researchKeywords()">Discover keywords</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportKeywords()">Export CSV</button>
+        </div>
+        <p id="research-status" style="font-size:13px;color:var(--muted);margin-bottom:12px" aria-live="polite">Starter ideas shown below. Research any topic to get relevant suggestions.</p>
         <div class="data-table-wrap">
           <table class="data-table">
             <thead>
               <tr>
                 <th style="width:40px">#</th>
                 <th>Keyword phrase</th>
-                <th>Topic type</th>
+                <th>Search intent</th>
+                <th>Topic cluster</th>
+                <th>Source / trend</th>
                 <th style="text-align:right">Action</th>
               </tr>
             </thead>
@@ -1805,26 +1817,55 @@ function renderTrendsChart(labels,values){
 }
 
 /* ─── KEYWORD TABLE ─── */
+let researchRows=null;
 function renderKeywordsTable(list){
   const tbody=document.getElementById('keywords-table-body');
-  tbody.innerHTML='';
-  list.slice(0,80).forEach((kw,idx)=>{
-    const isIndustry=kw.toLowerCase().includes('for');
+  tbody.replaceChildren();
+  list.slice(0,80).forEach((item,idx)=>{
+    const row=typeof item==='string'?{keyword:item,intent:'unknown',cluster:'Starter ideas',sources:['Starter idea']}:item;
     const tr=document.createElement('tr');
-    tr.innerHTML=`
-      <td style="color:var(--muted);font-family:var(--mono);font-size:12px">${idx+1}</td>
-      <td>
-        <div style="font-weight:500">${kw}</div>
-
-      </td>
-      <td><span style="padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;background:${isIndustry?'var(--accent-soft)':'var(--surface-2)'};color:${isIndustry?'var(--accent)':'var(--muted)'};border:1px solid var(--border)">${isIndustry?'Specific topic':'General topic'}</span></td>
-      <td style="text-align:right"><button onclick="setKeyword('${kw.replace(/'/g,"\\'")}');switchTab('studio')" class="btn btn-secondary btn-sm">Use in Studio</button></td>`;
-    tbody.appendChild(tr);
+    const source=[...(row.sources||[])];
+    if(row.trend_top!=null)source.push('Top: '+row.trend_top+'/100');
+    if(row.trend_rising!=null)source.push('Rising: '+row.trend_rising+(typeof row.trend_rising==='number'?'%':''));
+    for(const value of [idx+1,row.keyword+(row.article_angle?' — '+row.article_angle:''),row.intent,row.cluster,source.join(' · ')]){
+      const td=document.createElement('td');td.textContent=value;tr.appendChild(td);
+    }
+    const action=document.createElement('td');action.style.textAlign='right';
+    const button=document.createElement('button');button.className='btn btn-secondary btn-sm';button.textContent='Use in Studio';
+    button.addEventListener('click',()=>{
+      setKeyword(row.keyword);
+      document.getElementById('article-language').value=document.getElementById('research-language').value;
+      document.getElementById('article-market').value=document.getElementById('research-geo').value;
+      switchTab('studio');
+    });
+    action.appendChild(button);tr.appendChild(action);tbody.appendChild(tr);
   });
 }
 function filterKeywords(){
   const s=document.getElementById('matrix-search').value.toLowerCase();
-  renderKeywordsTable(allKeywords.filter(k=>k.toLowerCase().includes(s)));
+  renderKeywordsTable((researchRows||allKeywords).filter(k=>typeof k==='string'?k.toLowerCase().includes(s):[k.keyword,k.intent,k.cluster].join(' ').toLowerCase().includes(s)));
+}
+async function researchKeywords(){
+  const topic=document.getElementById('research-topic').value.trim();
+  if(!topic){showToast('Enter a topic first','warning');return;}
+  const btn=document.getElementById('research-btn'),status=document.getElementById('research-status');
+  btn.disabled=true;status.textContent='Researching related keywords…';
+  try{
+    const payload={topic,language:document.getElementById('research-language').value.trim(),geo:document.getElementById('research-geo').value.trim(),timeframe:document.getElementById('research-period').value,include_trends:document.getElementById('research-trends').checked};
+    const res=await fetch('/api/keywords/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await readApiResponse(res);
+    if(!res.ok)throw new Error(data.error||'Research failed');
+    researchRows=data.keywords;document.getElementById('matrix-search').value='';filterKeywords();
+    status.textContent=researchRows.length+' keywords · '+data.region+' · AI: '+data.ai_status+' · Trends: '+data.trend_status+'. Search volume and difficulty are not measured.';
+  }catch(err){status.textContent=err.message||'Research unavailable';}
+  finally{btn.disabled=false;}
+}
+function exportKeywords(){
+  if(!researchRows){showToast('Research a topic before exporting','warning');return;}
+  const cell=value=>{let s=String(value??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+  const lines=[['Keyword','Intent','Cluster','Sources','Top index','Rising growth','Article angle'],...researchRows.map(r=>[r.keyword,r.intent,r.cluster,r.sources.join('; '),r.trend_top,r.trend_rising,r.article_angle])];
+  const url=URL.createObjectURL(new Blob([lines.map(r=>r.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download='keyword-research.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 /* ─── REPOSITORY ─── */

@@ -19,6 +19,7 @@ from groq import Groq
 from pytrends.request import TrendReq
 from keywords import all_keywords
 import github_store
+from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 64 * 1024
@@ -839,10 +840,10 @@ def is_related_query(query, keyword):
 def _format_related_queries(query_df, keyword, limit=10):
     if query_df is None or query_df.empty:
         return []
-    filtered = query_df[query_df["query"].map(lambda query: is_related_query(query, keyword))]
+    # Google Trends already identifies related queries; do not require English word overlap.
     return [
-        {"query": str(row["query"]), "value": row["value"]}
-        for _, row in filtered.head(limit).iterrows()
+        {"query": str(row["query"]), "value": int(row["value"]) if str(row["value"]).isdigit() else str(row["value"])}
+        for _, row in query_df.head(limit).iterrows()
     ]
 
 
@@ -1033,6 +1034,45 @@ def api_trends():
             response.status_code = 429
             response.headers["Retry-After"] = str(_TRENDS_RATE_LIMIT_TTL_SECONDS)
         return response
+
+
+@app.post("/api/keywords/research")
+def api_keyword_research():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    for key, limit in {"topic": 240, "language": 80, "audience": 300, "geo": 2, "timeframe": 3}.items():
+        value = data.get(key, "")
+        if not isinstance(value, str) or len(value) > limit:
+            return jsonify({"error": f"Invalid {key}."}), 400
+    topic = data.get("topic", "").strip()
+    geo = data.get("geo", "").strip().upper()
+    period = data.get("timeframe", "1m")
+    periods = {"7d": "now 7-d", "1m": "today 1-m", "12m": "today 12-m"}
+    if not topic or (geo and not re.fullmatch(r"[A-Z]{2}", geo)) or period not in periods:
+        return jsonify({"error": "Enter a topic, valid country code and timeframe."}), 400
+    include_trends = data.get("include_trends", False)
+    if type(include_trends) is not bool:
+        return jsonify({"error": "include_trends must be a boolean."}), 400
+    trends, suggestions = {}, []
+    trend_status, ai_status = "not requested", "unavailable"
+    if include_trends:
+        try:
+            trends = fetch_trends_data(topic, periods[period], geo)
+            trend_status = "available" if trends.get("top_queries") or trends.get("rising_queries") else "no related queries"
+        except Exception:
+            app.logger.warning("Keyword trend research unavailable", exc_info=True)
+            trend_status = "unavailable"
+    if gemini_client or client:
+        try:
+            prompt = build_research_prompt(topic, data.get("language") or "English", geo or "Worldwide", data.get("audience", ""))
+            suggestions = parse_ai_suggestions(generate_ai_text(prompt, 3000))
+            ai_status = "available" if suggestions else "no usable suggestions"
+        except Exception:
+            app.logger.warning("AI keyword research unavailable", exc_info=True)
+    return jsonify({"topic": topic, "region": geo or "Worldwide", "timeframe": period,
+                    "trend_status": trend_status, "ai_status": ai_status,
+                    "keywords": combine_keywords(topic, suggestions, trends)})
 
 
 @app.route("/api/titles/<path:keyword>")
