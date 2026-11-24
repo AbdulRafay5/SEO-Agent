@@ -1510,10 +1510,21 @@ function animateStat(id,toVal,label,suffix){
 
 function refreshWorkspaceMetrics(){
   const text=rawBlogContent||'';
-  const words=text.trim().split(/\s+/).filter(Boolean).length;
-  const keyword=document.getElementById('target-keyword').value.trim().toLowerCase();
-  const count=keyword?text.toLowerCase().split(keyword).length-1:0;
-  const images=text.match(/!\[[^\]]*\]\([^)\n]+\)/g)||[];
+  const visible=[];
+  let fence=null;
+  for(const line of text.split('\n')){
+    const m=line.match(/^ {0,3}(\x60{3,}|~{3,})(.*)$/);
+    if(fence){if(m&&m[1][0]===fence[0]&&m[1].length>=fence.length&&!m[2].trim())fence=null;}
+    else if(m)fence=m[1];else visible.push(line);
+  }
+  const markdown=visible.join('\n');
+  const clean=markdown.replace(/(!?)\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)(?:\s+[^)]*)?\)/gi,(_,image,label)=>image?'':label).replace(/\[(?:S\d+\s*,\s*)*S\d+\]/g,'').replace(/<[^>]*>|https?:\/\/\S+/g,'');
+  const tokenize=value=>value.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)||[];
+  const terms=tokenize(clean),key=tokenize(document.getElementById('target-keyword').value);
+  const words=terms.length;
+  let count=0;
+  if(key.length){for(let i=0;i<=terms.length-key.length;){if(key.every((term,j)=>term===terms[i+j])){count++;i+=key.length;}else i++;}}
+  const images=markdown.match(/!\[[^\]]*\]\([^)\n]+\)/g)||[];
   const diagrams=images.filter(image=>image.includes('https://mermaid.ink/img/')).length;
   updateMetrics({word_count:words,target_words:validWordTarget(Number(document.getElementById('article-word-count').value)),rate_per_1000:words?1000*count/words:0,photo_count:images.length-diagrams,diagram_count:diagrams});
 }
@@ -2326,7 +2337,7 @@ async function previewEvidence(){
   const status=document.getElementById('evidence-status'),button=document.getElementById('evidence-preview-btn');
   button.disabled=true;status.textContent='Finding relevant passages…';
   try{
-    const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,evidence_sources:readEvidenceSources(),evidence_mode:document.getElementById('evidence-mode').value})});
+    const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,title:document.getElementById('article-heading').value.trim(),evidence_sources:readEvidenceSources(),evidence_mode:document.getElementById('evidence-mode').value})});
     const data=await readApiResponse(response);
     if(!response.ok)throw new Error(data.error||'Evidence retrieval failed');
     renderEvidenceResults(data.passages);

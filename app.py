@@ -1713,7 +1713,10 @@ def api_evidence_preview():
     mode = data.get("evidence_mode", "lexical")
     if mode not in ("lexical", "hybrid"):
         return jsonify({"error": "Invalid retrieval mode."}), 400
-    passages, method = select_evidence(topic, sources, mode)
+    title, questions = data.get("title", ""), data.get("questions", "")
+    if not isinstance(title, str) or len(title) > 300 or not isinstance(questions, str) or len(questions) > 3000:
+        return jsonify({"error": "Invalid title or questions."}), 400
+    passages, method = select_evidence(" ".join([topic, title, questions]), sources, mode)
     return jsonify({"passages": passages, "method": method,
                     "source_type": "Supplied text or search snippets; not independently verified"})
 
@@ -1821,9 +1824,10 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         body = ensure_h1_title(body, chosen_title or keyword)
         body = clean_keyword_artifacts(body, keyword)
 
-        word_count = len(body.split())
-        keyword_count = body.lower().count(keyword.lower())
-        rate_per_1000 = round((keyword_count / word_count) * 1000, 1) if word_count else 0
+        metrics = analyze_article(body, keyword, language=data.get("language", ""))
+        word_count = metrics["word_count"]
+        keyword_count = metrics["keyword_count"]
+        rate_per_1000 = metrics["keyword_rate_per_1000"]
 
         first_paragraph = next((p.strip() for p in body.split("\n\n") if len(p.strip()) >= 30 and not p.lstrip().startswith(("#", "![", "```", "|"))), "")
         meta_description = (first_paragraph[:157].rsplit(" ", 1)[0] + "...") if len(first_paragraph) > 160 else first_paragraph
@@ -1872,7 +1876,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "evidence": evidence_result,
             "storage": storage,
             "secondary_keyword_counts": {
-                item["keyword"]: body.lower().count(item["keyword"].lower())
+                item["keyword"]: analyze_article(body, item["keyword"])["keyword_count"]
                 for item in secondary_keywords
             },
             "rate_per_1000": rate_per_1000,

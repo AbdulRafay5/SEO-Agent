@@ -7,9 +7,25 @@ LINK = re.compile(r"(!?)\[([^\]\n]*)\]\((https?://[^)\s]+)(?:\s+[^)]*)?\)", re.I
 HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", re.M)
 
 
+def strip_fenced_code(markdown):
+    result = []
+    fence = None
+    for line in markdown.splitlines():
+        match = re.match(r"^ {0,3}(\x60{3,}|~{3,})(.*)$", line)
+        if fence:
+            if match and match[1][0] == fence[0] and len(match[1]) >= len(fence) and not match[2].strip():
+                fence = None
+        elif match:
+            fence = match[1]
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
 def plain_text(markdown):
-    text = re.sub(r"(?ms)^\s*```.*?^\s*```[^\n]*", "", markdown)
+    text = strip_fenced_code(markdown)
     text = LINK.sub(lambda m: "" if m[1] else m[2], text)
+    text = re.sub(r"\[(?:S\d+\s*,\s*)*S\d+\]", "", text)
     return re.sub(r"<[^>]*>|https?://\S+", "", text)
 
 
@@ -34,8 +50,9 @@ def analyze_article(content, keyword="", title="", description="", language=""):
     intro = paragraphs[0] if paragraphs else ""
     sentences = [s for s in re.split(r"[.!?。！？]+", body) if WORD.search(s)]
     average = round(len(WORD.findall(body)) / len(sentences), 1) if sentences else None
-    images = [m for m in LINK.finditer(content) if m[1]]
-    links = [m for m in LINK.finditer(content) if not m[1]]
+    visible_markdown = strip_fenced_code(content)
+    images = [m for m in LINK.finditer(visible_markdown) if m[1]]
+    links = [m for m in LINK.finditer(visible_markdown) if not m[1]]
     checks = []
 
     def check(name, status, advice):

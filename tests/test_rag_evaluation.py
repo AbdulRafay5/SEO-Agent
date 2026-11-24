@@ -25,7 +25,8 @@ class RAGEvaluationTests(unittest.TestCase):
         self.assertEqual(rows["semantic_paraphrase", "hybrid_mock"]["ranked"], ["S1"])
         self.assertEqual(rows["semantic_paraphrase", "lexical"]["recall_at_k"], 0)
         self.assertEqual(rows["partial_overlap", "lexical"]["ranked"][0], "S1")
-        # Japanese is deliberately reported, not asserted as supported.
+        self.assertEqual(rows["unsegmented_japanese", "lexical"]["recall_at_k"], 1)
+        self.assertEqual(rows["unsegmented_japanese", "lexical"]["ranked"], ["S1"])
 
     def test_generation_receives_selected_evidence(self):
         with tempfile.TemporaryDirectory() as folder, \

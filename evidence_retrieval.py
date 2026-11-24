@@ -2,6 +2,7 @@
 import json
 import math
 import re
+import unicodedata
 from collections import Counter, OrderedDict
 from array import array
 from hashlib import sha256
@@ -12,8 +13,21 @@ from urllib.parse import urlsplit
 STOP_WORDS = set("a an the and or of to in on for with is are what how why this that from by at be as it".split())
 
 
+UNSEGMENTED = re.compile(r"[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff]+")
+
+
 def tokens(text):
-    return [word for word in re.findall(r"[^\W_]+", text.casefold()) if word not in STOP_WORDS]
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    result = []
+    for part in re.split("(" + UNSEGMENTED.pattern + ")", normalized):
+        if UNSEGMENTED.fullmatch(part):
+            if len(part) == 1:
+                result.append(part)
+            else:
+                result.extend(part[i:i+2] for i in range(len(part)-1))
+        else:
+            result.extend(word for word in re.findall(r"[^\W_]+", part) if word not in STOP_WORDS)
+    return result
 
 
 def validate_sources(sources):
@@ -49,15 +63,20 @@ def build_chunks(sources):
     """Build bounded overlapping passages, retaining their source IDs."""
     chunks = []
     for i, source in enumerate(sources, 1):
-        words = source["text"].split()
-        for start in range(0, len(words), 140):
-            passage = " ".join(words[start:start + 180])
+        text = source["text"]
+        words = text.split()
+        # Character windows retain late matches in unsegmented passages.
+        if UNSEGMENTED.search(text) or any(len(word) > 240 for word in words):
+            windows = ((start, text[start:start+900]) for start in range(0, len(text), 700)
+                       if start == 0 or start-700+900 < len(text))
+        else:
+            windows = ((start, " ".join(words[start:start+180])) for start in range(0, len(words), 140)
+                       if start == 0 or start-140+180 < len(words))
+        for start, passage in windows:
             counts = Counter(tokens(passage))
             if counts:
                 chunks.append({"source_id": f"S{i}", "title": source["title"], "url": source["url"],
                                "kind": source.get("kind", "excerpt"), "passage": passage, "counts": counts, "length": sum(counts.values()), "offset": start})
-            if start + 180 >= len(words):
-                break
     return chunks
 
 

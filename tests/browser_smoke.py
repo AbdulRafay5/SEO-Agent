@@ -113,6 +113,12 @@ def main():
                 page.locator("#seo-analysis-panel").get_by_role("button", name="Close").click()
                 page.locator("#tab-btn-repository").click()
                 expect(page.locator("#repository-grid .repo-card").first).to_be_visible()
+                # Undo after saving a version leaves an unsaved workspace.
+                # First verify cancellation, then explicitly approve discard.
+                page.once("dialog", lambda dialog: dialog.dismiss())
+                page.locator("#repository-grid .repo-card").filter(has_not_text="Local version").first.get_by_role("button", name="Load in Studio").click()
+                expect(page.locator("#screen-repository")).to_be_visible()
+                page.once("dialog", lambda dialog: dialog.accept())
                 page.locator("#repository-grid .repo-card").filter(has_not_text="Local version").first.get_by_role("button", name="Load in Studio").click()
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()
