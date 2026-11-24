@@ -41,3 +41,7 @@ Optional live competitor discovery: set BRAVE_SEARCH_API_KEY in your environment
 ## Section revision
 
 Open a generated article or saved draft, click Revise, select a Markdown section and request a preview. Accepting a revision changes only the workspace; undo restores the preceding version. Copy or download the revised article to keep it. The saved original is not overwritten. Revision uses your configured AI provider and consumes its quota.
+
+### Saving revisions
+
+Save version creates a separate browser-local copy of the current article, including manual Markdown changes and the optional meta description. It does not overwrite server drafts or publish any data. Versions survive reloads on the same browser and origin, but are not synchronized across devices. Download important versions for backup. If browser storage is unavailable the editor reports the failure instead of claiming a save.

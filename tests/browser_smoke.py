@@ -69,6 +69,12 @@ def main():
                 expect(page.locator("#markdown-raw-view")).to_have_value(original)
                 page.locator("#revision-accept").click()
                 assert "Revised care instructions." in page.locator("#markdown-raw-view").input_value()
+                page.locator("#btn-save-version").click()
+                expect(page.locator("#toast-container")).to_contain_text("New version saved")
+                versions=page.evaluate("JSON.parse(localStorage.getItem('seo_studio_blogs'))")
+                assert versions[0]["isLocalVersion"]
+                assert "Revised care instructions." in versions[0]["content"]
+                assert "Revised care instructions." not in versions[1]["content"]
                 page.locator("#revision-undo").click()
                 expect(page.locator("#markdown-raw-view")).to_have_value(original)
                 page.locator("#revision-panel").get_by_role("button", name="Close").click()
@@ -77,7 +83,7 @@ def main():
                 page.locator("#seo-analysis-panel").get_by_role("button", name="Close").click()
                 page.locator("#tab-btn-repository").click()
                 expect(page.locator("#repository-grid .repo-card").first).to_be_visible()
-                page.locator("#repository-grid").get_by_role("button", name="Load in Studio").first.click()
+                page.locator("#repository-grid .repo-card").filter(has_not_text="Local version").first.get_by_role("button", name="Load in Studio").click()
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
                 page.locator("#tab-btn-keywords").click()
                 page.locator("#research-topic").fill("Indoor gardening")

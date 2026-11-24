@@ -763,6 +763,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             </li>
           </ul>
           <div class="article-tab-actions">
+            <button onclick="saveWorkspaceVersion()" id="btn-save-version" class="icon-btn disabled" aria-label="Save new version" title="Save a separate browser draft"><span style="font-size:13px">Save version</span></button>
             <button onclick="openRevisionPanel()" id="btn-revise" class="icon-btn" aria-label="Revise section"><span style="font-size:13px">Revise</span></button>
             <button onclick="analyzeCurrentArticle()" id="btn-seo-analysis" class="icon-btn" aria-label="Analyze SEO">
               <i data-lucide="list-checks" style="width:15px;height:15px" aria-hidden="true"></i>
@@ -787,7 +788,7 @@ select.field-input{padding-left:12px;cursor:pointer}
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="revision-request" class="btn btn-primary btn-sm" onclick="requestRevision()">Preview revision</button><button id="revision-accept" class="btn btn-secondary btn-sm" disabled onclick="acceptRevision()">Accept revision</button><button id="revision-undo" class="btn btn-secondary btn-sm" disabled onclick="undoRevision()">Undo revision</button></div>
           <p id="revision-status" aria-live="polite" style="font-size:13px;margin:8px 0"></p>
           <textarea id="revision-preview" class="field-input no-icon" rows="6" aria-label="Proposed revision" hidden></textarea>
-          <p style="font-size:12px;color:var(--muted)">Revisions affect the current workspace only. Copy or download to keep them; the original saved draft remains unchanged.</p>
+          <p style="font-size:12px;color:var(--muted)">Use Save version to keep a separate draft in this browser, or copy or download it. The original saved draft remains unchanged.</p>
         </section>
         <section id="seo-analysis-panel" hidden style="border-bottom:1px solid var(--border);padding:14px;max-height:35vh;overflow:auto;background:var(--surface)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><strong>Editorial SEO checklist</strong><button class="btn btn-secondary btn-sm" onclick="document.getElementById('seo-analysis-panel').hidden=true">Close</button></div>
@@ -1054,6 +1055,7 @@ let savedBlogs=[];
 let hiddenServerFiles=[];
 let currentTheme='light';
 let rawBlogContent='';
+let currentDraftFilename=null;
 let selectedH1Title='';
 let blogBrief={purpose:'',tone:'professional',questions:[]};
 let secondaryKeywordId=0;
@@ -1226,7 +1228,7 @@ function setOutputState(state){
 
   // copy/download buttons
   const hasCopy=(state==='rendered'||state==='raw')&&rawBlogContent;
-  ['btn-copy','btn-download'].forEach(id=>{
+  ['btn-copy','btn-download','btn-save-version'].forEach(id=>{
     const el=document.getElementById(id);
     if(el){el.classList.toggle('disabled',!hasCopy);}
   });
@@ -1255,7 +1257,9 @@ function openDraft(filename){
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
-  document.getElementById('seo-description').value='';
+  currentDraftFilename=blog.filename;
+  revisionUndo=null;
+  document.getElementById('seo-description').value=blog.metaDescription||'';
   document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
   document.getElementById('markdown-raw-view').value=blog.content;
   document.getElementById('target-keyword').value=blog.keyword||'';
@@ -1285,7 +1289,9 @@ async function loadDraftFromServer(filename){
     updateHeaderCounters();
 
     rawBlogContent=blog.content;
-  document.getElementById('seo-description').value='';
+    currentDraftFilename=blog.filename;
+    revisionUndo=null;
+  document.getElementById('seo-description').value=blog.metaDescription||'';
     document.getElementById('markdown-rendered-view').innerHTML=safeMarkdown(blog.content);
     document.getElementById('markdown-raw-view').value=blog.content;
     document.getElementById('target-keyword').value=blog.keyword||'';
@@ -1667,6 +1673,8 @@ async function generateArticle(){
 
     stopLoadingSteps();
     rawBlogContent=data.content;
+    currentDraftFilename=data.filename;
+    revisionUndo=null;
     document.getElementById('seo-description').value=data.meta_description||'';
 
     // update metrics
@@ -1831,6 +1839,21 @@ function undoRevision(){
 }
 function syncRawEdits(){closeRevisionPanel();rawBlogContent=document.getElementById('markdown-raw-view').value;document.getElementById('seo-analysis-panel').hidden=true;}
 
+function saveWorkspaceVersion(){
+  const visible=['markdown-rendered-view','markdown-raw-view'].some(id=>document.getElementById(id).style.display!=='none');
+  if(!visible||!rawBlogContent.trim()){showToast('Open an article first','warning');return;}
+  const original=savedBlogs.find(b=>b.filename===currentDraftFilename);
+  const topic=document.getElementById('target-keyword').value.trim()||original?.keyword||'Article';
+  const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
+  const filename='version_'+id+'.md';
+  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value};
+  const next=[version,...savedBlogs];
+  try{localStorage.setItem('seo_studio_blogs',JSON.stringify(next));}
+  catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
+  savedBlogs=next;currentDraftFilename=filename;
+  updateHeaderCounters();renderRecentDrafts();
+  showToast('New version saved in this browser');
+}
 function copyCurrentContent(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}
   // Render the markdown to real HTML so pasting into WordPress, Google Docs,
@@ -2115,7 +2138,7 @@ function renderRepositoryCards(){
     card.innerHTML=`
       <div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px">
-          <span>${escapeText(blog.createdAt)}</span>
+          <span>${escapeText(blog.createdAt)}${blog.isLocalVersion?' · Local version':''}</span>
           <span style="font-family:var(--mono);font-weight:600;color:var(--accent)">${(blog.wordCount||'').toLocaleString()} words</span>
         </div>
         <div style="font-weight:700;font-size:14px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeText(blog.keyword)}</div>
