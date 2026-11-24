@@ -862,6 +862,11 @@ def protect_owner_workspace():
                             headers={"Cache-Control": "no-store"})
         return None
     if enabled in {"", "0", "false", "off"}:
+        # Preserve existing deployments unless protection is explicitly required.
+        # Operators can enable this before exposing a private hosted workspace.
+        if os.getenv("SEO_REQUIRE_PROTECTED_WORKSPACE", "").strip() == "1":
+            return Response("Configure owner authentication or an isolated guest workspace.", status=503,
+                            headers={"Cache-Control": "no-store"})
         return None
     username = os.getenv("SEO_OWNER_USERNAME", "")
     password = os.getenv("SEO_OWNER_PASSWORD", "")
@@ -1015,8 +1020,15 @@ def account_research_item(filename):
 
 @app.after_request
 def prevent_private_response_caching(response):
-    if guest_mode() or os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"", "0", "false", "off"}:
-        response.headers["Cache-Control"] = "private, no-store"
+    # Draft and generation responses must not enter shared HTTP caches, even
+    # when the developer has chosen an unprotected local workspace.
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if account_mode():
+        response.vary.add("Cookie")
+    if os.getenv("SEO_OWNER_AUTH", "").strip().lower() not in {"", "0", "false", "off"}:
         response.vary.add("Authorization")
     return response
 
@@ -1115,12 +1127,12 @@ def save_remote_version():
     filename = f"remote_version_{uuid4().hex}.md"
     entry = {
         "filename": filename, "keyword": data.get("keyword", "").strip() or "Article",
-        "wordCount": len(content.split()), "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
+        "wordCount": analyze_article(content, data.get("keyword", ""))["word_count"], "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
         "preview": content[:180], "metaDescription": data.get("meta_description", ""),
         "versionOf": parent or None, "isRemoteVersion": True, "targetWords": target_words,
     }
     try:
-        if not github_store.save_file(f"{DRAFTS_REPO_DIR}/{filename}", content, "Save separate article version"):
+        if not github_store.save_file(f"{DRAFTS_REPO_DIR}/{filename}", content, "Save separate article version", expected_sha=None):
             return jsonify({"error": "Remote storage is unavailable. Keep your local copy."}), 503
     except Exception:
         app.logger.warning("Remote version write failed", exc_info=True)
@@ -1183,7 +1195,7 @@ def api_get_blog(filename):
     if guest_mode():
         abort(404)
     safe_filename = os.path.basename(filename)
-    if safe_filename != filename or not filename.endswith(".md"):
+    if safe_filename != filename or not re.fullmatch(r"[A-Za-z0-9_-]{1,220}\.md", filename):
         abort(404)
 
     runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
@@ -1226,7 +1238,7 @@ def view_blog(filename):
         abort(404)
     import markdown
     safe_filename = os.path.basename(filename)
-    if safe_filename != filename or not filename.endswith(".md"):
+    if safe_filename != filename or not re.fullmatch(r"[A-Za-z0-9_-]{1,220}\.md", filename):
         abort(404)
 
     runtime_filepath = os.path.join(BLOGS_FOLDER, safe_filename)
@@ -1456,8 +1468,8 @@ def fetch_trends_data(searched_keyword, timeframe, geo=""):
 def api_trends():
     keyword = request.args.get("keyword", "")
     searched_keyword = normalize_trends_keyword(keyword)
-    if not searched_keyword:
-        return jsonify({"error": "Please enter a search term."}), 400
+    if not searched_keyword or len(keyword) > 240:
+        return jsonify({"error": "Enter a search term of at most 240 characters."}), 400
 
     geo = request.args.get("geo", "").strip().upper()
     if geo and not re.fullmatch(r"[A-Z]{2}", geo):
