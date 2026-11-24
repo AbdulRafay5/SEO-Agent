@@ -740,7 +740,8 @@ def ensure_h1_title(body, chosen_title=None):
     return f"# {final_title}\n\n{introduction}" if introduction else f"# {final_title}"
 
 
-def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None, language="English", audience="", market="", links=""):
+def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None, language="English", audience="", market="", links="", target_words=None):
+    target_words = MIN_WORD_COUNT if target_words is None else target_words
     secondary = "\n".join(f'- {item["keyword"]}: approximately {item["count"]} mentions when natural' for item in (secondary_keywords or []))
     return f"""You are a senior editorial SEO writer. Write one useful, accurate, publication-ready Markdown article.
 
@@ -767,7 +768,7 @@ CONTENT STRUCTURE
 - When cost, eligibility, regulations or penalties matter, explain the relevant factors and identify claims requiring verification. Do not invent specific values or rules.
 - Include four to six relevant FAQs with complete answers where the topic benefits from them. Avoid repeating earlier sections.
 - End with a useful conclusion and a practical next step, without forced promotion.
-- Aim for {MIN_WORD_COUNT} words when the subject warrants it. Prefer substantive detail over repetition or filler.
+- Aim for approximately {target_words} words, including headings and any FAQs. Adapt the number and length of sections to this budget; omit optional sections if needed. Prefer substantive detail over repetition or filler.
 
 KEYWORDS AND STYLE
 - Treat the primary keyword as a natural phrase; every occurrence must be grammatically complete and appropriate to its context.
@@ -1702,6 +1703,10 @@ def api_generate():
     keyword = data.get("primary_keyword", "").strip()
     if not keyword:
         return jsonify({"error": "Enter a topic or keyword."}), 400
+    target_words = data.get("target_words", MIN_WORD_COUNT)
+    if type(target_words) is not int or not 300 <= target_words <= 3000:
+        return jsonify({"error": "Target word count must be a whole number between 300 and 3000."}), 400
+    data["target_words"] = target_words
     chosen_title = data.get("title", "").strip() or None
     blog_purpose = data.get("purpose", "")
     audience_questions = data.get("questions", "")
@@ -1761,12 +1766,13 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         return jsonify({"error": f"Please wait {wait_left} more seconds before generating another blog."}), 429
 
     try:
-        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""))
+        prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""), target_words=data.get("target_words", MIN_WORD_COUNT))
         evidence, evidence_method = select_evidence(" ".join([keyword, chosen_title or "", audience_questions]), data.get("evidence_sources", []), data.get("evidence_mode", "lexical"))
         prompt += evidence_prompt(evidence)
         # Length is an editorial target, not a mandatory retry condition.
         # A shorter complete answer is preferable to repeated, quota-heavy requests.
-        raw_text = generate_ai_text(prompt, max_tokens=4000)
+        target_words = data.get("target_words", MIN_WORD_COUNT)
+        raw_text = generate_ai_text(prompt, max_tokens=min(8000, max(2000, target_words * 2 + 1000)))
         if not raw_text or not raw_text.strip():
             raise RuntimeError("AI provider returned an empty article.")
 
@@ -1832,6 +1838,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "meta_description": meta_description,
             "content": body,
             "word_count": word_count,
+            "target_words": target_words,
             "keyword_count": keyword_count,
             "evidence": evidence_result,
             "storage": storage,

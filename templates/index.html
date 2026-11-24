@@ -656,6 +656,7 @@ select.field-input{padding-left:12px;cursor:pointer}
             </select>
           </div>
 
+          <div class="field"><label for="article-word-count" class="field-label">Target word count</label><input id="article-word-count" type="number" min="300" max="3000" step="1" value="2000" class="field-input no-icon" aria-describedby="article-word-count-hint"><p id="article-word-count-hint" style="font-size:12px;color:var(--muted);margin:4px 0">300–3,000 words. Actual length may vary.</p></div>
           <div class="field"><label for="article-language" class="field-label">Article language</label><input id="article-language" class="field-input no-icon" value="English" placeholder="e.g. Spanish"></div>
           <div class="field"><label for="article-audience" class="field-label">Target audience</label><input id="article-audience" class="field-input no-icon" placeholder="e.g. beginners"></div>
           <div class="field"><label for="article-market" class="field-label">Target market</label><input id="article-market" class="field-input no-icon" placeholder="Worldwide (optional)"></div>
@@ -1678,6 +1679,8 @@ function clearTitleSelection(){
 
 /* ─── GENERATE ARTICLE ─── */
 async function generateArticle(){
+  const targetWords=Number(document.getElementById('article-word-count').value);
+  if(!Number.isInteger(targetWords)||targetWords<300||targetWords>3000){showToast('Choose a whole number from 300 to 3000 words','warning');return;}
   const kw=document.getElementById('target-keyword').value.trim();
   if(!kw){showToast('Enter a primary keyword first','warning');return;}
   const genBtn=document.getElementById('generate-btn');
@@ -1704,6 +1707,7 @@ async function generateArticle(){
   if(purpose)params.set('purpose',purpose);
   if(tone)params.set('tone',tone);
   const payload=Object.fromEntries(params);
+  payload.target_words=targetWords;
   payload.secondary_keywords=sec;
   payload.evidence_sources=readEvidenceSources();
   payload.evidence_mode=document.getElementById("evidence-mode").value;

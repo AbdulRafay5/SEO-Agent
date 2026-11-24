@@ -30,3 +30,22 @@ class GenerationReliabilityTests(unittest.TestCase):
             response = app.test_client().post("/api/evidence/preview", json={
                 "topic":"植物", "evidence_sources":[{"title":"植物","text":"植物の育て方"*1500} for _ in range(3)]})
             self.assertEqual(response.status_code, 200)
+
+
+    def test_target_word_count_validation(self):
+        client = app.test_client()
+        for value in (299, 3001, True, "1000", 500.5, None):
+            response = client.post("/api/generate", json={"primary_keyword":"herbs","target_words":value})
+            self.assertEqual(response.status_code, 400)
+
+    def test_custom_target_reaches_provider(self):
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.dict("os.environ", {"SEO_ACCOUNT_MODE":"0","SEO_GUEST_MODE":"1","SEO_OWNER_AUTH":"0"}), \
+             patch("app.LAST_GEN_FILE", str(Path(folder) / "last.txt")), \
+             patch("app.gemini_client", object()), \
+             patch("app.generate_ai_text", return_value="# Herbs\n\nHerbs need sunlight.") as generate:
+            response = app.test_client().post("/api/generate", json={"primary_keyword":"herbs","target_words":750})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["target_words"], 750)
+            self.assertIn("approximately 750 words", generate.call_args.args[0])
+            generate.assert_called_once()

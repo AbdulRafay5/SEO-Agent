@@ -111,3 +111,5 @@ Account research is stored as individual immutable records under `users/<verifie
 ## Generation behaviour
 
 The 2000-word target is advisory; article generation makes one generation request (with the existing provider fallback on failure), rather than repeating successful short responses solely to reach a word count. Review output for completeness. Chinese and Japanese title candidates can pass validation without spaces. Word counts remain whitespace-based estimates, not language-aware segmentation. Request bodies are capped at 256 KiB while existing per-field limits remain in force, allowing larger valid UTF-8 research excerpts. Optional account infrastructure is disabled by default and is not required for the core SEO workflow.
+
+Choose a target word count from 300 to 3000 in the article studio (default 2000). API clients can pass integer `target_words`. The generator adapts the editorial prompt and output token budget; exact length is not guaranteed and successful responses are not regenerated merely to match the target.
