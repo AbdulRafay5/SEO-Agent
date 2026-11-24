@@ -1090,6 +1090,12 @@ let hiddenServerFiles=[];
 let currentTheme='light';
 let rawBlogContent='';
 let currentDraftFilename=null;
+let workspaceBaseline='';
+let workspaceBaselineDescription='';
+function rememberWorkspace(){workspaceBaseline=rawBlogContent;workspaceBaselineDescription=document.getElementById('seo-description').value;}
+function workspaceDirty(){return rawBlogContent!==workspaceBaseline||document.getElementById('seo-description').value!==workspaceBaselineDescription;}
+function allowWorkspaceChange(){return !workspaceDirty()||confirm('Discard unsaved article edits? Save a version or download the article to keep them.');}
+window.addEventListener('beforeunload',event=>{if(workspaceDirty()){event.preventDefault();event.returnValue='';}});
 let selectedH1Title='';
 let blogBrief={purpose:'',tone:'professional',questions:[]};
 let secondaryKeywordId=0;
@@ -1294,6 +1300,7 @@ function renderRecentDrafts(){
 }
 
 function openDraft(filename){
+  if(!allowWorkspaceChange())return;
   let blog=savedBlogs.find(b=>b.filename===filename);
   if(!blog||!blog.content){loadDraftFromServer(filename);return;}
   rawBlogContent=blog.content;
@@ -1310,6 +1317,7 @@ function openDraft(filename){
   selectedH1Title='';
   document.getElementById('article-heading').value=(blog.content.match(/^#\s+(.+)$/m)||[])[1]||'';
   refreshWorkspaceMetrics();
+  rememberWorkspace();
   switchTab('studio');
 }
 
@@ -1348,6 +1356,7 @@ async function loadDraftFromServer(filename){
   selectedH1Title='';
   document.getElementById('article-heading').value=(blog.content.match(/^#\s+(.+)$/m)||[])[1]||'';
   refreshWorkspaceMetrics();
+    rememberWorkspace();
     switchTab('studio');
   }catch(err){
     showToast(err.message||'Could not load this article','error');
@@ -1614,6 +1623,7 @@ async function fetchTitleOptions(){
   const kw=heading||primaryKw;
   if(!kw){showToast('Enter a heading or primary keyword first','warning');return;}
   const powerWordsMode=(document.getElementById('power-words-mode')?.value||'no').toLowerCase();
+  if(!allowWorkspaceChange())return;
   const btn=document.getElementById('btn-fetch-titles');
   const btnText=document.getElementById('btn-titles-text');
   btn.disabled=true;
@@ -1704,6 +1714,7 @@ async function generateArticle(){
   if(!Number.isInteger(targetWords)||targetWords<300||targetWords>3000){showToast('Choose a whole number from 300 to 3000 words','warning');return;}
   const kw=document.getElementById('target-keyword').value.trim();
   if(!kw){showToast('Enter a primary keyword first','warning');return;}
+  if(!allowWorkspaceChange())return;
   const genBtn=document.getElementById('generate-btn');
   const genText=document.getElementById('generate-btn-text');
   genBtn.disabled=true;
@@ -1772,6 +1783,7 @@ async function generateArticle(){
     setOutputState('rendered');
     setEditorTab('rendered');
     restoreDraftEvidence(newPost.evidence);
+    if(draftSaved)rememberWorkspace();
     // The server report applies to the generated Markdown; if formatting changed,
     // keep the evidence but explicitly withhold a potentially stale report.
     if(!draftSaved)showToast('Article generated but browser storage is unavailable. Download your article and retain your research.','warning');
@@ -1925,7 +1937,7 @@ function saveWorkspaceVersion(){
   const next=[version,...savedBlogs];
   try{localStorage.setItem(draftStorageKey,JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
-  savedBlogs=next;currentDraftFilename=filename;
+  savedBlogs=next;currentDraftFilename=filename;rememberWorkspace();
   updateHeaderCounters();renderRecentDrafts();
   showToast('New version saved in this browser');
 }
@@ -1998,7 +2010,18 @@ function copyRichContentFallback(html){
 function downloadCurrentBlog(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}
   const kw=document.getElementById('target-keyword').value||'seo_blog';
-  const blob=new Blob([rawBlogContent],{type:'text/markdown;charset=utf-8'});
+  const draft=savedBlogs.find(b=>b.filename===currentDraftFilename);
+  const sources=new Map();
+  for(const passage of (draft?.evidence?.passages||[])){
+    if(!sources.has(passage.source_id))sources.set(passage.source_id,passage);
+  }
+  const referenceText=[...sources.values()].map(row=>{
+    const title=String(row.title||'Untitled source').replace(/[\r\n]+/g,' ');
+    const url=String(row.url||'').replace(/[\r\n]+/g,'');
+    return '- ['+row.source_id+'] '+title+' ('+row.kind+')'+(url?' — '+url:'');
+  }).join('\n');
+  const exported=rawBlogContent+(referenceText?'\n\n## Retrieved source references\n\n'+referenceText+'\n\nSource IDs identify retrieved material; claims require independent verification.\n':'');
+  const blob=new Blob([exported],{type:'text/markdown;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;a.download=kw.toLowerCase().replace(/\s+/g,'_')+'.md';

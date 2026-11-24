@@ -625,47 +625,31 @@ def get_fallback_title_options(primary_keywords, include_power_words):
     return enforce_title_rules(options, primary_keywords, include_power_words)
 
 
-def extract_title_meta_options(raw_text, primary_keywords, include_power_words):
+def extract_title_meta_options(raw_text, primary_keywords, include_power_words, language="English"):
     options = []
-
+    seen = set()
     for line in raw_text.splitlines():
-        line = line.strip()
-        if not line or not re.match(r"^\s*\d+\s*[.)]\s+", line):
+        if not re.match(r"^\s*(?:\d+\s*[.)]|[-*])\s+", line):
             continue
-
-        cleaned = re.sub(r"^\s*\d+\s*[.)]\s*", "", line).strip().strip('"\'`*#')
-        if not cleaned:
+        cleaned = re.sub(r"^\s*(?:\d+\s*[.)]|[-*])\s*", "", line).strip().strip("\"'*#")
+        title, _, meta = cleaned.partition("||")
+        title = title.strip()
+        if not valid_title_text(title) or len(title) > 300 or title.casefold() in seen:
             continue
-
-        title = cleaned
-        meta_description = ""
-        if "||" in cleaned:
-            left, right = cleaned.split("||", 1)
-            title = left.strip()
-            meta_description = re.sub(r"^(meta|description)\s*[:\-]\s*", "", right.strip(), flags=re.IGNORECASE)
-        elif " - " in cleaned:
-            left, right = cleaned.rsplit(" - ", 1)
-            title = left.strip()
-            meta_description = right.strip()
-
-        title = limit_words(title, max_words=12)
-
-        if not valid_title_text(title):
-            continue
-
-        if title.lower() in {item["title"].lower() for item in options}:
-            continue
-
-        options.append({"title": title, "meta_description": meta_description})
-
-    fallback_options = get_fallback_title_options(primary_keywords, include_power_words)
-    for option in fallback_options:
-        if len(options) >= 6:
+        seen.add(title.casefold())
+        options.append({"title": title, "meta_description": meta.strip()[:160], "source": "ai"})
+        if len(options) == 6:
             break
-        if option["title"].lower() not in {item["title"].lower() for item in options}:
-            options.append(option)
-
-    return enforce_title_rules(options[:6], primary_keywords, include_power_words)
+    # Do not inject English wording into titles in another language.
+    if language.strip().casefold() in {"english", "en", "en-us", "en-gb"}:
+        for option in get_fallback_title_options(primary_keywords, include_power_words):
+            if len(options) == 6:
+                break
+            key = option["title"].casefold()
+            if key not in seen:
+                seen.add(key)
+                options.append({**option, "source": "fallback"})
+    return options
 
 
 def extract_ai_title_candidates(raw_text):
@@ -1623,33 +1607,42 @@ def api_keyword_research():
 @app.route("/api/titles/<path:keyword>")
 def api_titles(keyword):
     keyword = (keyword or "").strip()
-    if not keyword:
-        return jsonify({"error": "Please enter a keyword first."}), 400
+    if not keyword or len(keyword) > 300:
+        return jsonify({"error": "Enter a topic of at most 300 characters."}), 400
+    language = request.args.get("language", "English").strip() or "English"
+    audience = request.args.get("audience", "")
+    if len(language) > 80 or len(audience) > 300:
+        return jsonify({"error": "Invalid language or audience."}), 400
 
     power_words_mode = request.args.get("power_words", "no").strip().lower()
     include_power_words = power_words_mode in {"yes", "true", "1", "on"}
     primary_keywords = parse_primary_keywords(keyword)
 
     try:
-        prompt = build_title_prompt(keyword, primary_keywords, include_power_words, request.args.get("language", "English"), request.args.get("audience", ""))
+        prompt = build_title_prompt(keyword, primary_keywords, include_power_words, language, audience)
         raw_text = generate_title_text(prompt, max_tokens=1200)
 
-        ai_titles = extract_ai_title_candidates(raw_text)
-        title_options = extract_title_meta_options(raw_text, primary_keywords, include_power_words)
+        title_options = extract_title_meta_options(raw_text, primary_keywords, include_power_words, language)
         titles = [item["title"] for item in title_options]
+        if not titles:
+            return jsonify({"error": "No usable titles in the requested language. Enter a heading manually or retry."}), 502
+        kinds = {item["source"] for item in title_options}
+        source = next(iter(kinds)) if len(kinds) == 1 else "mixed"
 
         return jsonify({
             "keyword": keyword,
             "titles": titles,
             "title_options": title_options,
             "power_words_enabled": include_power_words,
-            "source": "ai" if ai_titles else "fallback",
-            "notice": None if ai_titles else "The AI returned no usable title lines, so relevant local titles were supplied.",
+            "source": source,
+            "notice": None if source == "ai" else "Some or all titles are local fallback suggestions.",
         })
 
     except Exception as e:
         app.logger.exception("AI title request failed")
-        fallback_options = get_fallback_title_options(primary_keywords, include_power_words)
+        if language.casefold() not in {"english", "en", "en-us", "en-gb"}:
+            return jsonify({"error": "Title generation unavailable for this language. Enter a heading manually or retry."}), 502
+        fallback_options = extract_title_meta_options("", primary_keywords, include_power_words, language)
         return jsonify({
             "keyword": keyword,
             "titles": [item["title"] for item in fallback_options],
