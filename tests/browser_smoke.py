@@ -75,12 +75,15 @@ def main():
                 page.locator("#btn-fetch-titles").click()
                 expect(page.locator(".brainstorm-card").first).to_be_visible()
                 page.locator(".brainstorm-card").first.click()
+                page.locator("#article-word-count").fill("750")
                 page.locator("#generate-btn").click()
                 expect(page.locator("#markdown-rendered-view")).to_be_visible(timeout=20000)
                 expect(page.locator("#markdown-rendered-view")).to_contain_text("Water when the soil is dry.")
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()
                 expect(page.locator("#evidence-results")).to_contain_text("Indoor herbs need sunlight and water.")
                 saved=page.evaluate("JSON.parse(localStorage.getItem('seo_studio_blogs'))[0]")
+                assert saved["targetWords"] == 750
+                expect(page.locator("#metric-words-label")).to_contain_text("/ 750")
                 assert saved["evidence"]["passages"][0]["passage"] == "Indoor herbs need sunlight and water."
                 assert saved["content"] == page.locator("#markdown-raw-view").input_value()
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()

@@ -1304,7 +1304,8 @@ function openDraft(filename){
   document.getElementById('target-keyword').value=blog.keyword||'';
   setOutputState('rendered');
   setEditorTab('rendered');
-  updateMetrics({word_count:blog.wordCount||0,rate_per_1000:0,diagram_count:0,photo_count:0});
+  document.getElementById('article-word-count').value=validWordTarget(blog.targetWords);
+  updateMetrics({word_count:blog.wordCount||0,target_words:validWordTarget(blog.targetWords),rate_per_1000:0,diagram_count:0,photo_count:0});
   switchTab('studio');
 }
 
@@ -1319,7 +1320,7 @@ async function loadDraftFromServer(filename){
 
     const blog={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
-      content:data.content,wordCount:data.word_count,
+      content:data.content,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),
       metaDescription:data.meta_description||'',versionOf:data.version_of||null,isRemoteVersion:!!data.is_remote_version,evidence:data.evidence||null,
       createdAt:serverFileMeta[filename]?.createdAt||'On server',
       preview:(data.content.substring(0,180))+'…'
@@ -1339,7 +1340,8 @@ async function loadDraftFromServer(filename){
     document.getElementById('target-keyword').value=blog.keyword||'';
     setOutputState('rendered');
     setEditorTab('rendered');
-    updateMetrics({word_count:blog.wordCount||0,rate_per_1000:0,diagram_count:0,photo_count:0});
+    document.getElementById('article-word-count').value=validWordTarget(blog.targetWords);
+  updateMetrics({word_count:blog.wordCount||0,target_words:validWordTarget(blog.targetWords),rate_per_1000:0,diagram_count:0,photo_count:0});
     switchTab('studio');
   }catch(err){
     showToast(err.message||'Could not load this article','error');
@@ -1491,15 +1493,17 @@ function animateStat(id,toVal,label,suffix){
   requestAnimationFrame(tick);
 }
 
+function validWordTarget(value){return Number.isInteger(value)&&value>=300&&value<=3000?value:2000;}
 function updateMetrics(data){
   const words=data.word_count||0;
+  const target=validWordTarget(data.target_words);
   const density=data.rate_per_1000||0;
   const diagrams=data.diagram_count||0;
   const photos=data.photo_count||0;
-  const checks=Math.min(3,(diagrams>0?1:0)+(photos>0?1:0)+(words>=2000?1:0));
+  const checks=Math.min(3,(diagrams>0?1:0)+(photos>0?1:0)+(words>=target?1:0));
 
   // labels
-  const wLabel=words>=2000?'Target reached':words.toLocaleString()+' / 2,000';
+  const wLabel=words.toLocaleString()+' / '+target.toLocaleString();
   document.getElementById('metric-words-label').textContent=wLabel;
   document.getElementById('metric-density-label').textContent=density.toFixed(1)+' per 1k words';
   document.getElementById('metric-checks-label').textContent=checks+' / 3';
@@ -1508,15 +1512,15 @@ function updateMetrics(data){
   const wBar=document.getElementById('metric-words-bar');
   const dBar=document.getElementById('metric-density-bar');
   const cBar=document.getElementById('metric-checks-bar');
-  if(wBar)wBar.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
+  if(wBar)wBar.style.width=Math.min(100,Math.round((words/target)*100))+'%';
   if(dBar)dBar.style.width='0%';
   if(cBar)cBar.style.width=Math.round((checks/3)*100)+'%';
 
   // health chip
   const chip=document.getElementById('metric-health');
   if(chip){
-    if(words>=2000){chip.textContent='Ready';chip.className='status-chip status-ready';}
-    else{chip.textContent='Needs work';chip.className='status-chip status-warn';}
+    if(words>=target){chip.textContent='Target reached';chip.className='status-chip status-ready';}
+    else{chip.textContent='Below target';chip.className='status-chip status-warn';}
   }
 
   // legacy IDs (kept for compatibility)
@@ -1524,7 +1528,7 @@ function updateMetrics(data){
   const md=document.getElementById('metric-density');if(md)md.textContent=density;
   const mdg=document.getElementById('metric-diagrams');if(mdg)mdg.textContent=diagrams;
   const mp=document.getElementById('metric-photos');if(mp)mp.textContent=photos;
-  const mhb=document.getElementById('metric-health-bar');if(mhb)mhb.style.width=Math.min(100,Math.round((words/2000)*100))+'%';
+  const mhb=document.getElementById('metric-health-bar');if(mhb)mhb.style.width=Math.min(100,Math.round((words/target)*100))+'%';
 }
 
 async function analyzeCurrentArticle(){
@@ -1732,7 +1736,7 @@ async function generateArticle(){
     const normalized=normalizePreviewMarkdown(data.content,selectedH1Title);
     const newPost={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
-      content:normalized,wordCount:data.word_count,
+      content:normalized,wordCount:data.word_count,targetWords:validWordTarget(data.target_words),
       metaDescription:data.meta_description||'',
       evidence:data.evidence?.status==='retrieved'||data.evidence?.status==='no_matches'?{...data.evidence,citations:normalized===data.content?data.evidence.citations:null}:null,
       createdAt:new Date().toLocaleDateString()+' · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
@@ -1878,7 +1882,7 @@ function applyWorkspaceRevision(text){
   const words=text.trim().split(/\s+/).filter(Boolean).length;
   const keyword=document.getElementById('target-keyword').value.trim().toLowerCase();
   const count=keyword?text.toLowerCase().split(keyword).length-1:0;
-  updateMetrics({word_count:words,rate_per_1000:words?1000*count/words:0,photo_count:(text.match(/!\[/g)||[]).length,diagram_count:0});
+  updateMetrics({word_count:words,target_words:validWordTarget(Number(document.getElementById('article-word-count').value)),rate_per_1000:words?1000*count/words:0,photo_count:(text.match(/!\[/g)||[]).length,diagram_count:0});
 }
 function acceptRevision(){
   if(!revisionPending||rawBlogContent!==revisionPending.snapshot){openRevisionPanel();return;}
@@ -1902,7 +1906,7 @@ function saveWorkspaceVersion(){
   const topic=document.getElementById('target-keyword').value.trim()||original?.keyword||'Article';
   const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
   const filename='version_'+id+'.md';
-  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
+  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,targetWords:validWordTarget(Number(document.getElementById('article-word-count').value)),createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
   const next=[version,...savedBlogs];
   try{localStorage.setItem(draftStorageKey,JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}
@@ -1916,7 +1920,7 @@ async function saveRemoteVersion(){
   if(!button||!visible||!rawBlogContent.trim())return;
   const content=rawBlogContent;
   const original=savedBlogs.find(b=>b.filename===currentDraftFilename);
-  const payload={content,keyword:document.getElementById('target-keyword').value.trim(),meta_description:document.getElementById('seo-description').value,version_of:original?.versionOf||currentDraftFilename||''};
+  const payload={content,target_words:validWordTarget(Number(document.getElementById('article-word-count').value)),keyword:document.getElementById('target-keyword').value.trim(),meta_description:document.getElementById('seo-description').value,version_of:original?.versionOf||currentDraftFilename||''};
   button.disabled=true;
   try{
     const response=await fetch('/api/blog/versions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});

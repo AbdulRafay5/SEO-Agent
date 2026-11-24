@@ -1027,6 +1027,9 @@ def save_remote_version():
     content = data.get("content", "")
     if not content.strip():
         return jsonify({"error": "Article content is required."}), 400
+    target_words = data.get("target_words", 2000)
+    if type(target_words) is not int or not 300 <= target_words <= 3000:
+        return jsonify({"error": "Invalid target word count."}), 400
     parent = data.get("version_of", "")
     if parent and not re.fullmatch(r"[A-Za-z0-9_-]+\.md", parent):
         return jsonify({"error": "Invalid source draft filename."}), 400
@@ -1035,7 +1038,7 @@ def save_remote_version():
         "filename": filename, "keyword": data.get("keyword", "").strip() or "Article",
         "wordCount": len(content.split()), "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
         "preview": content[:180], "metaDescription": data.get("meta_description", ""),
-        "versionOf": parent or None, "isRemoteVersion": True,
+        "versionOf": parent or None, "isRemoteVersion": True, "targetWords": target_words,
     }
     try:
         if not github_store.save_file(f"{DRAFTS_REPO_DIR}/{filename}", content, "Save separate article version"):
@@ -1130,6 +1133,7 @@ def api_get_blog(filename):
         "keyword": meta.get("keyword") or safe_filename.replace("_", " ").replace(".md", ""),
         "word_count": meta.get("wordCount") or len(raw_text.split()),
         "meta_description": meta.get("metaDescription", ""),
+        "target_words": meta.get("targetWords", 2000),
         "evidence": load_remote_evidence(safe_filename, raw_text),
         "version_of": meta.get("versionOf"),
         "is_remote_version": bool(meta.get("isRemoteVersion") or safe_filename.startswith("remote_version_")),
@@ -1703,7 +1707,7 @@ def api_generate():
     keyword = data.get("primary_keyword", "").strip()
     if not keyword:
         return jsonify({"error": "Enter a topic or keyword."}), 400
-    target_words = data.get("target_words", MIN_WORD_COUNT)
+    target_words = data.get("target_words", 2000)
     if type(target_words) is not int or not 300 <= target_words <= 3000:
         return jsonify({"error": "Target word count must be a whole number between 300 and 3000."}), 400
     data["target_words"] = target_words
@@ -1820,7 +1824,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
                 storage["metadata_saved"] = bool(_upsert_manifest_entry({
                     "filename": safe_filename, "keyword": keyword, "wordCount": word_count,
                     "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
-                    "preview": body[:180], "metaDescription": meta_description,
+                    "preview": body[:180], "metaDescription": meta_description, "targetWords": target_words,
                 }))
                 storage["evidence_saved"] = save_remote_evidence(safe_filename, body, evidence_result)
         except Exception:
