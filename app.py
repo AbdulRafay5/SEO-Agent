@@ -8,6 +8,7 @@ import re
 import random
 import time
 import tempfile
+from uuid import uuid4
 import base64
 import difflib
 import json
@@ -78,13 +79,14 @@ def _upsert_manifest_entry(entry):
         manifest = _load_manifest(strict=True)
         manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
         manifest.insert(0, entry)
-        github_store.save_file(
+        return github_store.save_file(
             MANIFEST_PATH,
             json.dumps(manifest, indent=2),
             message="Update article index",
         )
     except Exception:
         app.logger.exception("Failed to update GitHub manifest for %s", entry.get("filename"))
+        return False
 
 
 gemini_key = os.getenv("GEMINI_API_KEY")
@@ -761,6 +763,12 @@ def prevent_private_response_caching(response):
     return response
 
 
+def remote_version_saving_enabled():
+    return (os.getenv("SEO_REMOTE_VERSIONS", "").strip() == "1"
+            and os.getenv("SEO_OWNER_AUTH", "").strip().lower() in {"1", "true", "on"}
+            and github_store._configured())
+
+
 @app.route("/")
 def home():
     local_files = set(_safe_listdir(BUNDLED_BLOGS_FOLDER) + _safe_listdir(BLOGS_FOLDER))
@@ -771,7 +779,43 @@ def home():
         repo_files = set()
     files = sorted(f for f in local_files | repo_files if f.endswith(".md"))
     file_meta = {entry["filename"]: entry for entry in _load_manifest() if entry.get("filename")}
-    return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta)
+    return render_template("index.html", files=files, keywords=all_keywords, file_meta=file_meta,
+                           remote_versions_enabled=remote_version_saving_enabled())
+
+
+@app.post("/api/blog/versions")
+def save_remote_version():
+    if not remote_version_saving_enabled():
+        return jsonify({"error": "Remote version saving is not enabled for this private workspace."}), 503
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    for field, limit in {"content": 40000, "keyword": 240, "meta_description": 1000, "version_of": 250}.items():
+        value = data.get(field, "")
+        if not isinstance(value, str) or len(value) > limit:
+            return jsonify({"error": f"Invalid {field}."}), 400
+    content = data.get("content", "")
+    if not content.strip():
+        return jsonify({"error": "Article content is required."}), 400
+    parent = data.get("version_of", "")
+    if parent and not re.fullmatch(r"[A-Za-z0-9_-]+\.md", parent):
+        return jsonify({"error": "Invalid source draft filename."}), 400
+    filename = f"remote_version_{uuid4().hex}.md"
+    entry = {
+        "filename": filename, "keyword": data.get("keyword", "").strip() or "Article",
+        "wordCount": len(content.split()), "createdAt": time.strftime("%b %d, %Y %H:%M UTC", time.gmtime()),
+        "preview": content[:180], "metaDescription": data.get("meta_description", ""),
+        "versionOf": parent or None, "isRemoteVersion": True,
+    }
+    try:
+        if not github_store.save_file(f"{DRAFTS_REPO_DIR}/{filename}", content, "Save separate article version"):
+            return jsonify({"error": "Remote storage is unavailable. Keep your local copy."}), 503
+    except Exception:
+        app.logger.warning("Remote version write failed", exc_info=True)
+        return jsonify({"error": "Remote write could not be confirmed. Keep your local copy."}), 502
+    # The Markdown file remains independently discoverable even if metadata fails.
+    indexed = _upsert_manifest_entry(entry)
+    return jsonify({"filename": filename, "metadata": entry, "metadata_saved": bool(indexed)}), 201
 
 
 @app.route("/api/blog/<filename>")
@@ -805,6 +849,9 @@ def api_get_blog(filename):
         "content": raw_text,
         "keyword": meta.get("keyword") or safe_filename.replace("_", " ").replace(".md", ""),
         "word_count": meta.get("wordCount") or len(raw_text.split()),
+        "meta_description": meta.get("metaDescription", ""),
+        "version_of": meta.get("versionOf"),
+        "is_remote_version": bool(meta.get("isRemoteVersion") or safe_filename.startswith("remote_version_")),
     })
 
 

@@ -763,6 +763,9 @@ select.field-input{padding-left:12px;cursor:pointer}
             </li>
           </ul>
           <div class="article-tab-actions">
+            {% if remote_versions_enabled %}
+            <button onclick="saveRemoteVersion()" id="btn-save-remote" class="icon-btn disabled" aria-label="Save remote version" title="Save a separate version to the private datastore"><span style="font-size:13px">Save remote</span></button>
+            {% endif %}
             <button onclick="saveWorkspaceVersion()" id="btn-save-version" class="icon-btn disabled" aria-label="Save new version" title="Save a separate browser draft"><span style="font-size:13px">Save version</span></button>
             <button onclick="openRevisionPanel()" id="btn-revise" class="icon-btn" aria-label="Revise section"><span style="font-size:13px">Revise</span></button>
             <button onclick="analyzeCurrentArticle()" id="btn-seo-analysis" class="icon-btn" aria-label="Analyze SEO">
@@ -1228,7 +1231,7 @@ function setOutputState(state){
 
   // copy/download buttons
   const hasCopy=(state==='rendered'||state==='raw')&&rawBlogContent;
-  ['btn-copy','btn-download','btn-save-version'].forEach(id=>{
+  ['btn-copy','btn-download','btn-save-version','btn-save-remote'].forEach(id=>{
     const el=document.getElementById(id);
     if(el){el.classList.toggle('disabled',!hasCopy);}
   });
@@ -1281,6 +1284,7 @@ async function loadDraftFromServer(filename){
     const blog={
       id:Date.now(),keyword:data.keyword,filename:data.filename,
       content:data.content,wordCount:data.word_count,
+      metaDescription:data.meta_description||'',versionOf:data.version_of||null,isRemoteVersion:!!data.is_remote_version,
       createdAt:serverFileMeta[filename]?.createdAt||'On server',
       preview:(data.content.substring(0,180))+'…'
     };
@@ -1854,6 +1858,26 @@ function saveWorkspaceVersion(){
   updateHeaderCounters();renderRecentDrafts();
   showToast('New version saved in this browser');
 }
+async function saveRemoteVersion(){
+  const visible=['markdown-rendered-view','markdown-raw-view'].some(id=>document.getElementById(id).style.display!=='none');
+  const button=document.getElementById('btn-save-remote');
+  if(!button||!visible||!rawBlogContent.trim())return;
+  const content=rawBlogContent;
+  const original=savedBlogs.find(b=>b.filename===currentDraftFilename);
+  const payload={content,keyword:document.getElementById('target-keyword').value.trim(),meta_description:document.getElementById('seo-description').value,version_of:original?.versionOf||currentDraftFilename||''};
+  button.disabled=true;
+  try{
+    const response=await fetch('/api/blog/versions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await readApiResponse(response);
+    if(!response.ok)throw new Error(data.error||'Remote save failed');
+    const meta=data.metadata;
+    if(!serverFiles.includes(data.filename))serverFiles.push(data.filename);
+    serverFileMeta[data.filename]=meta;
+    updateHeaderCounters();
+    showToast(data.metadata_saved?'Separate version saved remotely':'Article saved remotely but metadata could not be saved','success');
+  }catch(error){showToast(error.message||'Remote save unavailable','error');}
+  finally{button.disabled=false;}
+}
 function copyCurrentContent(){
   if(!rawBlogContent){showToast('No content yet','warning');return;}
   // Render the markdown to real HTML so pasting into WordPress, Google Docs,
@@ -2119,7 +2143,7 @@ function renderRepositoryCards(){
       const meta=serverFileMeta[f];
       all.push(meta?{
         id:f,keyword:meta.keyword||f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,
-        createdAt:meta.createdAt||'On server',wordCount:meta.wordCount||'2000+',
+        createdAt:meta.createdAt||'On server',wordCount:meta.wordCount||'2000+',isRemoteVersion:!!meta.isRemoteVersion,
         preview:meta.preview||'Saved in generated_blogs/ directory.'
       }:{id:f,keyword:f.replace(/_/g,' ').replace('.md',''),filename:f,isServer:true,createdAt:'On server',wordCount:'2000+',preview:'Saved in generated_blogs/ directory.'});
     }
@@ -2138,7 +2162,7 @@ function renderRepositoryCards(){
     card.innerHTML=`
       <div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px">
-          <span>${escapeText(blog.createdAt)}${blog.isLocalVersion?' · Local version':''}</span>
+          <span>${escapeText(blog.createdAt)}${blog.isLocalVersion?' · Local version':blog.isRemoteVersion?' · Remote version':''}</span>
           <span style="font-family:var(--mono);font-weight:600;color:var(--accent)">${(blog.wordCount||'').toLocaleString()} words</span>
         </div>
         <div style="font-weight:700;font-size:14px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeText(blog.keyword)}</div>
