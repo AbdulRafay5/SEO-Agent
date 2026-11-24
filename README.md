@@ -59,3 +59,7 @@ Article index updates use the GitHub file revision from the original read and re
 ## Editorial prompt and grounding
 
 The generation prompt preserves topic-adaptive article structure, natural keyword usage, contextual links, useful FAQs and relevant media placement. Reference URLs are not fetched or treated as verified evidence. Keyword/trend and competitor research are separate tools; they do not automatically inject retrieved documents into generation. This is not a full retrieval-augmented generation pipeline.
+
+## Optional evidence retrieval
+
+In Article Studio, open Evidence grounding and paste up to five source excerpts (30,000 characters total). Preview retrieves relevant passages using deterministic BM25 lexical ranking; generation retrieves passages for the topic, title and editorial questions, then adds them to the prompt with source IDs. Source URLs are labels, not automatically fetched documents. Excerpts are unverified and are sent to the configured AI provider during generation. No additional API or vector database is needed. Citation IDs are requested, not guaranteed or independently fact-checked. Evidence is not automatically persisted with saved drafts; retain your source material separately. Retrieval is lexical, not semantic, and can miss paraphrases and languages without whitespace-delimited words.

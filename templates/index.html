@@ -660,6 +660,14 @@ select.field-input{padding-left:12px;cursor:pointer}
           <div class="field"><label for="article-audience" class="field-label">Target audience</label><input id="article-audience" class="field-input no-icon" placeholder="e.g. beginners"></div>
           <div class="field"><label for="article-market" class="field-label">Target market</label><input id="article-market" class="field-input no-icon" placeholder="Worldwide (optional)"></div>
           <div class="field"><label for="article-links" class="field-label">Reference links (optional)</label><textarea id="article-links" class="field-input no-icon" placeholder="Paste relevant URLs, one per line"></textarea></div>
+          <details class="field">
+            <summary style="cursor:pointer;font-weight:600">Evidence grounding (optional)</summary>
+            <p style="font-size:12px;color:var(--muted);margin:6px 0">Paste source excerpts to retrieve relevant passages. Links are not automatically fetched. Excerpts are sent to the configured AI provider during generation.</p>
+            <div id="evidence-inputs"></div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"><button class="btn btn-secondary btn-sm" onclick="addEvidenceSource()">Add source</button><button class="btn btn-secondary btn-sm" id="evidence-preview-btn" onclick="previewEvidence()">Preview relevant evidence</button></div>
+            <p id="evidence-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
+            <div id="evidence-results" style="display:grid;gap:6px;max-height:240px;overflow:auto"></div>
+          </details>
           <!-- Trending now -->
           <div class="field">
             <div class="field-label">Trending now</div>
@@ -1667,6 +1675,7 @@ async function generateArticle(){
   if(tone)params.set('tone',tone);
   const payload=Object.fromEntries(params);
   payload.secondary_keywords=sec;
+  payload.evidence_sources=readEvidenceSources();
   const url='/api/generate';
 
   try{
@@ -1704,6 +1713,8 @@ async function generateArticle(){
     document.getElementById('markdown-raw-view').value=normalized;
     setOutputState('rendered');
     setEditorTab('rendered');
+    renderEvidenceResults(data.evidence?.passages||[]);
+    document.getElementById('evidence-status').textContent=data.evidence?.status==='retrieved'?'Generation received '+data.evidence.passages.length+' passages; check citations against sources.':data.evidence?.status==='no_matches'?'No matching evidence was found; article is not grounded in the supplied text.':'';
     showToast('Article generated');
 
   }catch(err){
@@ -2075,6 +2086,37 @@ async function researchKeywords(){
     status.textContent=researchRows.length+' keywords · '+data.region+' · AI: '+data.ai_status+' · Trends: '+data.trend_status+'. Search volume and difficulty are not measured.';
   }catch(err){status.textContent=err.message||'Research unavailable';}
   finally{btn.disabled=false;}
+}
+function addEvidenceSource(){
+  const wrap=document.getElementById('evidence-inputs');
+  if(wrap.children.length>=5){showToast('Maximum five evidence sources','warning');return;}
+  const row=document.createElement('div');row.style.cssText='display:grid;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)';
+  row.innerHTML='<input class="field-input no-icon" data-evidence-title maxlength="240" placeholder="Source title" aria-label="Evidence title"><input class="field-input no-icon" data-evidence-url maxlength="2048" placeholder="Source URL (optional)" aria-label="Evidence URL"><textarea class="field-input no-icon" data-evidence-text maxlength="12000" rows="4" placeholder="Paste relevant source text" aria-label="Evidence text"></textarea>';
+  const remove=document.createElement('button');remove.className='btn btn-secondary btn-sm';remove.textContent='Remove source';remove.onclick=()=>row.remove();row.appendChild(remove);wrap.appendChild(row);
+}
+function readEvidenceSources(){
+  return [...document.getElementById('evidence-inputs').children].map(row=>({title:row.querySelector('[data-evidence-title]').value.trim(),url:row.querySelector('[data-evidence-url]').value.trim(),text:row.querySelector('[data-evidence-text]').value.trim()})).filter(source=>source.title||source.url||source.text);
+}
+function renderEvidenceResults(passages){
+  const results=document.getElementById('evidence-results');results.replaceChildren();
+  for(const passage of passages){
+    const box=document.createElement('div');box.style.cssText='padding:8px;border:1px solid var(--border);font-size:12px;overflow-wrap:anywhere';
+    const title=document.createElement('strong');title.textContent=passage.source_id+' · '+passage.title;
+    const text=document.createElement('p');text.textContent=passage.passage;
+    const source=document.createElement('div');source.textContent=passage.url||'User-supplied text';box.append(title,source,text);results.appendChild(box);
+  }
+}
+async function previewEvidence(){
+  const status=document.getElementById('evidence-status'),button=document.getElementById('evidence-preview-btn');
+  button.disabled=true;status.textContent='Finding relevant passages…';
+  try{
+    const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,evidence_sources:readEvidenceSources()})});
+    const data=await readApiResponse(response);
+    if(!response.ok)throw new Error(data.error||'Evidence retrieval failed');
+    renderEvidenceResults(data.passages);
+    status.textContent=data.passages.length+' matching passages from user-provided evidence. Not independently verified.';
+  }catch(error){renderEvidenceResults([]);status.textContent=error.message||'Evidence retrieval failed';}
+  finally{button.disabled=false;}
 }
 function addCompetitorInput(entry=null){
   const wrap=document.getElementById('competitor-inputs');

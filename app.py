@@ -23,6 +23,7 @@ from keywords import all_keywords
 import github_store
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
+from evidence_retrieval import validate_sources, retrieve, evidence_prompt
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
 app = Flask(__name__)
@@ -1384,6 +1385,22 @@ def api_titles(keyword):
         })
 
 
+@app.post("/api/evidence/preview")
+def api_evidence_preview():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
+    topic = data.get("topic", "")
+    if not isinstance(topic, str) or not topic.strip() or len(topic) > 240:
+        return jsonify({"error": "Enter a topic of at most 240 characters."}), 400
+    try:
+        sources = validate_sources(data.get("evidence_sources", []))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"passages": retrieve(topic, sources), "method": "BM25 lexical retrieval",
+                    "source_type": "User-supplied text; not independently verified"})
+
+
 @app.post("/api/generate")
 def api_generate():
     data = request.get_json(silent=True)
@@ -1415,6 +1432,10 @@ def api_generate():
                 valid = False
             if not valid:
                 return jsonify({"error": "Reference links must be HTTP or HTTPS URLs, one per line."}), 400
+    try:
+        data["evidence_sources"] = validate_sources(data.get("evidence_sources", []))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     secondary_keywords = data.get("secondary_keywords", [])
     if not isinstance(secondary_keywords, list) or len(secondary_keywords) > 20:
         return jsonify({"error": "Provide at most 20 secondary keywords."}), 400
@@ -1453,6 +1474,8 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
 
     try:
         prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""))
+        evidence = retrieve(" ".join([keyword, chosen_title or "", audience_questions]), data.get("evidence_sources", []))
+        prompt += evidence_prompt(evidence)
         raw_text = ""
 
         for attempt in range(3):
@@ -1526,6 +1549,8 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "content": body,
             "word_count": word_count,
             "keyword_count": keyword_count,
+            "evidence": {"method": "BM25 lexical retrieval", "passages": evidence,
+                         "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"},
             "secondary_keyword_counts": {
                 item["keyword"]: body.lower().count(item["keyword"].lower())
                 for item in secondary_keywords
