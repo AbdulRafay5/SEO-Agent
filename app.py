@@ -75,18 +75,34 @@ def _load_manifest(strict=False):
 
 
 def _upsert_manifest_entry(entry):
-    try:
-        manifest = _load_manifest(strict=True)
-        manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
-        manifest.insert(0, entry)
-        return github_store.save_file(
-            MANIFEST_PATH,
-            json.dumps(manifest, indent=2),
-            message="Update article index",
-        )
-    except Exception:
-        app.logger.exception("Failed to update GitHub manifest for %s", entry.get("filename"))
-        return False
+    """Merge against the exact revision read, retrying concurrent edits."""
+    for attempt in range(3):
+        try:
+            content, sha = github_store.get_file(MANIFEST_PATH)
+            if content is None:
+                manifest = []
+            else:
+                manifest = json.loads(content)
+                if not isinstance(manifest, list) or any(not isinstance(item, dict) for item in manifest):
+                    raise ValueError("Invalid article index; refusing to overwrite it.")
+            manifest = [item for item in manifest if item.get("filename") != entry["filename"]]
+            manifest.insert(0, entry)
+            return github_store.save_file(
+                MANIFEST_PATH,
+                json.dumps(manifest, indent=2),
+                message="Update article index",
+                expected_sha=sha,
+            )
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else None
+            if status in {409, 422} and attempt < 2:
+                continue
+            app.logger.warning("Article index write failed")
+            return False
+        except Exception:
+            app.logger.warning("Article index update failed", exc_info=True)
+            return False
+    return False
 
 
 gemini_key = os.getenv("GEMINI_API_KEY")

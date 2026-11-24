@@ -77,17 +77,25 @@ def get_file(path):
     return content, data["sha"]
 
 
-def save_file(path, content, message):
+_LOOK_UP_SHA = object()
+
+
+def save_file(path, content, message, *, expected_sha=_LOOK_UP_SHA):
     """
     Creates or updates `path` in the datastore repo with `content` (text).
-    Looks up the current sha first so updates don't clobber concurrent edits.
+    By default looks up the current SHA before writing. Read-modify-write
+    callers must supply the SHA from their original read; explicit None
+    means create only. A conflict is reported by the GitHub API.
     No-ops quietly if GitHub isn't configured.
     """
     if not _configured():
         return False
 
     info = _repo_info()
-    _, sha = get_file(path)
+    if expected_sha is _LOOK_UP_SHA:
+        _, sha = get_file(path)
+    else:
+        sha = expected_sha
 
     url = f"{API}/repos/{info['owner']}/{info['name']}/contents/{path}"
     body = {

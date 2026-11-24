@@ -53,3 +53,5 @@ The existing workspace is single-owner, not multi-tenant. To protect a private d
 ## Optional remote article versions
 
 For a private, authenticated owner workspace, set SEO_REMOTE_VERSIONS=1 alongside SEO_OWNER_AUTH=1 and the existing private GitHub datastore configuration. Save remote creates a new Markdown file and attempts to index its metadata; it never replaces the source draft. The file survives redeployments and is discoverable from another browser. If indexing fails, the file is still listed by filename. GitHub retains saved content in its history; removing a draft from the browser library is not permanent remote deletion. Keep the datastore private. This remains a single-owner feature, not multi-user storage isolation.
+
+Article index updates use the GitHub file revision from the original read and retry conflicts up to three attempts. Invalid index content is not overwritten. If indexing cannot be confirmed, the independently saved Markdown file remains discoverable by filename. This does not provide transactional storage or multi-user isolation.
