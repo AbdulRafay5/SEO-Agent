@@ -1526,8 +1526,7 @@ function animateStat(id,toVal,label,suffix){
   requestAnimationFrame(tick);
 }
 
-function refreshWorkspaceMetrics(){
-  const text=rawBlogContent||'';
+function calculateWorkspaceMetrics(text,keyword){
   const visible=[];
   let fence=null;
   for(const line of text.split('\n')){
@@ -1538,13 +1537,16 @@ function refreshWorkspaceMetrics(){
   const markdown=visible.join('\n');
   const clean=markdown.replace(/(!?)\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)(?:\s+[^)]*)?\)/gi,(_,image,label)=>image?'':label).replace(/\[(?:S\d+\s*,\s*)*S\d+\]/g,'').replace(/<[^>]*>|https?:\/\/\S+/g,'');
   const tokenize=value=>value.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)||[];
-  const terms=tokenize(clean),key=tokenize(document.getElementById('target-keyword').value);
+  const terms=tokenize(clean),key=tokenize(keyword);
   const words=terms.length;
   let count=0;
   if(key.length){for(let i=0;i<=terms.length-key.length;){if(key.every((term,j)=>term===terms[i+j])){count++;i+=key.length;}else i++;}}
   const images=markdown.match(/!\[[^\]]*\]\([^)\n]+\)/g)||[];
   const diagrams=images.filter(image=>image.includes('https://mermaid.ink/img/')).length;
-  updateMetrics({word_count:words,target_words:validWordTarget(Number(document.getElementById('article-word-count').value)),rate_per_1000:words?1000*count/words:0,photo_count:images.length-diagrams,diagram_count:diagrams});
+  return {word_count:words,rate_per_1000:words?Math.round(10000*count/words)/10:0,photo_count:images.length-diagrams,diagram_count:diagrams};
+}
+function refreshWorkspaceMetrics(){
+  updateMetrics({...calculateWorkspaceMetrics(rawBlogContent||'',document.getElementById('target-keyword').value),target_words:validWordTarget(Number(document.getElementById('article-word-count').value))});
 }
 document.getElementById('article-word-count').addEventListener('change',refreshWorkspaceMetrics);
 function validWordTarget(value){return Number.isInteger(value)&&value>=300&&value<=3000?value:2000;}
@@ -1970,7 +1972,7 @@ function saveWorkspaceVersion(){
   const topic=document.getElementById('target-keyword').value.trim()||original?.keyword||'Article';
   const id=typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
   const filename='version_'+id+'.md';
-  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:rawBlogContent.trim().split(/\s+/).length,targetWords:validWordTarget(Number(document.getElementById('article-word-count').value)),brief:{...Object.fromEntries(['language','audience','market','links'].map(key=>[key,document.getElementById('article-'+key).value])),purpose:document.getElementById('blog-purpose').value,tone:document.getElementById('blog-tone').value,secondary_keywords:getSecondaryKeywords()},createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
+  const version={id,filename,keyword:topic,content:rawBlogContent,wordCount:calculateWorkspaceMetrics(rawBlogContent,topic).word_count,targetWords:validWordTarget(Number(document.getElementById('article-word-count').value)),brief:{...Object.fromEntries(['language','audience','market','links'].map(key=>[key,document.getElementById('article-'+key).value])),purpose:document.getElementById('blog-purpose').value,tone:document.getElementById('blog-tone').value,secondary_keywords:getSecondaryKeywords()},createdAt:new Date().toLocaleString(),preview:rawBlogContent.slice(0,180)+'…',versionOf:original?.versionOf||currentDraftFilename||null,isLocalVersion:true,metaDescription:document.getElementById('seo-description').value,evidence:original?.evidence?{...original.evidence,citations:rawBlogContent===original.content?original.evidence.citations:null}:null};
   const next=[version,...savedBlogs];
   try{localStorage.setItem(draftStorageKey,JSON.stringify(next));}
   catch(error){showToast('Browser storage is full or unavailable. Download your article instead.','error');return;}

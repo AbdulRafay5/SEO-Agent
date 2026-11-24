@@ -358,51 +358,8 @@ def extract_bracket_blocks(text, start_marker):
 
 
 def distribute_media_markers(body):
-    """
-    Spreads out [IMAGE:...]/[DIAGRAM:...] markers that the model dumped together
-    (typically all at the end of the article) across different ## sections instead.
-    Markers already placed on their own elsewhere in the body are left untouched.
-    """
-    marker_pattern = re.compile(r"\[(?:IMAGE|DIAGRAM):[^\[\]]*\]")
-    paragraphs = body.split("\n\n")
-
-    def is_marker_only(p):
-        stripped = p.strip()
-        return bool(stripped) and marker_pattern.fullmatch(stripped) is not None
-
-    # Find runs of 2+ consecutive marker-only paragraphs - these are the clusters to fix.
-    clustered_markers = []
-    clustered_indices = set()
-    run = []
-    for idx, p in enumerate(paragraphs):
-        if is_marker_only(p):
-            run.append(idx)
-        else:
-            if len(run) >= 2:
-                clustered_markers.extend(paragraphs[i].strip() for i in run)
-                clustered_indices.update(run)
-            run = []
-    if len(run) >= 2:
-        clustered_markers.extend(paragraphs[i].strip() for i in run)
-        clustered_indices.update(run)
-
-    if not clustered_markers:
-        return body
-
-    remaining = [p for i, p in enumerate(paragraphs) if i not in clustered_indices]
-
-    heading_indices = [i for i, p in enumerate(remaining) if p.lstrip().startswith("## ")]
-    if not heading_indices:
-        return body
-
-    slots = heading_indices[: len(clustered_markers)] or heading_indices
-    for i, marker in enumerate(clustered_markers):
-        slot = slots[i % len(slots)]
-        # Insert after the section heading's first paragraph rather than mid-sentence.
-        target = slot + 1 if slot + 1 < len(remaining) else slot
-        remaining[target] = remaining[target].rstrip() + f"\n\n{marker}"
-
-    return "\n\n".join(remaining)
+    """Keep media in its original context; never distribute it arbitrarily."""
+    return body
 
 
 def get_nearest_heading(text, position):
