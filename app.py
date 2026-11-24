@@ -382,7 +382,10 @@ def replace_image_markers(blog_text, primary_keyword=""):
     diagram_blocks = extract_bracket_blocks(blog_text, "[DIAGRAM:")
 
     used_urls = set()
-    for full_match, description in image_blocks:
+    for index, (full_match, description) in enumerate(image_blocks):
+        if index >= 4:
+            blog_text = blog_text.replace(full_match, "", 1)
+            continue
         position = blog_text.find(full_match)
         section_context = get_nearest_heading(blog_text, position) if position != -1 else ""
         image_url = get_pexels_image(description, primary_keyword, section_context, used_urls)
@@ -394,12 +397,17 @@ def replace_image_markers(blog_text, primary_keyword=""):
         markdown_image = f"\n\n![{clean_caption}]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
 
-    for full_match, diagram_code in diagram_blocks:
+    diagram_count = 0
+    for index, (full_match, diagram_code) in enumerate(diagram_blocks):
+        if index >= 2 or len(diagram_code) > 2000 or not diagram_code.strip():
+            blog_text = blog_text.replace(full_match, "", 1)
+            continue
+        diagram_count += 1
         image_url = get_mermaid_diagram(diagram_code)
         markdown_image = f"\n\n![Process diagram]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
 
-    return blog_text, len(used_urls), len(diagram_blocks)
+    return blog_text, len(used_urls), diagram_count
 
 
 def correct_keyword_input(keyword):
@@ -422,9 +430,9 @@ def create_blog_slug(title_or_keyword):
 
 def create_unique_blog_filename(keyword, title=None):
     base_title = (title or keyword or "blog").strip()
-    base = create_blog_slug(base_title)
+    base = create_blog_slug(base_title)[:100].rstrip("_") or "blog"
     suffix = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
-    unique = f"{base}_{suffix}_{random.randint(1000, 9999)}.md"
+    unique = f"{base}_{suffix}_{uuid4().hex}.md"
     return unique
 
 
@@ -724,20 +732,22 @@ def ensure_h1_title(body, chosen_title=None):
     body = body.strip()
     if not body:
         return body
-
     first_line, _, remaining = body.partition("\n")
-    first_line = first_line.strip()
+    heading = re.match(r"^#{1,6}\s+(.+)$", first_line.strip())
     title = chosen_title.strip() if chosen_title else ""
-
-    heading_match = re.match(r"^#{1,6}\s+(.+)$", first_line)
-    heading_text = heading_match.group(1).strip() if heading_match else first_line
-
-    final_title, introduction = _split_heading_from_intro(heading_text, title)
-
-    if remaining.strip():
-        introduction = "\n\n".join(part for part in (introduction, remaining.strip()) if part)
-
-    return f"# {final_title}\n\n{introduction}" if introduction else f"# {final_title}"
+    if heading:
+        original = heading.group(1).strip()
+        if title and original.startswith(title) and original != title:
+            # Retain any text following an exact requested title.
+            tail = original[len(title):].strip(" :-")
+            remaining = "\n\n".join(part for part in (tail, remaining.strip()) if part)
+        title = title or original
+    elif title:
+        # Never discard the first paragraph when a model omits its H1.
+        remaining = body
+    else:
+        title = first_line.strip()
+    return f"# {title}" + ("\n\n" + remaining.strip() if remaining.strip() else "")
 
 
 def build_prompt(chosen_keyword, chosen_title=None, blog_purpose="", audience_questions="", blog_tone="professional", secondary_keywords=None, language="English", audience="", market="", links="", target_words=None):
@@ -1786,21 +1796,20 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         body = raw_text.strip()
 
         # Structural, typographical, and natural linking passes
-        body = ensure_h1_title(body, chosen_title)
-        body = collapse_duplicate_words(body)
+        body = ensure_h1_title(body, chosen_title or keyword)
 
         body = clean_keyword_artifacts(body, keyword)
 
         body = distribute_media_markers(body)
         body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword)
-        body = ensure_h1_title(body, chosen_title)
+        body = ensure_h1_title(body, chosen_title or keyword)
         body = clean_keyword_artifacts(body, keyword)
 
         word_count = len(body.split())
         keyword_count = body.lower().count(keyword.lower())
         rate_per_1000 = round((keyword_count / word_count) * 1000, 1) if word_count else 0
 
-        first_paragraph = next((p.strip() for p in body.split("\n\n") if len(p.split()) > 10 and not p.lstrip().startswith("#")), "")
+        first_paragraph = next((p.strip() for p in body.split("\n\n") if len(p.strip()) >= 30 and not p.lstrip().startswith(("#", "![", "```", "|"))), "")
         meta_description = (first_paragraph[:157].rsplit(" ", 1)[0] + "...") if len(first_paragraph) > 160 else first_paragraph
 
         safe_filename = create_unique_blog_filename(keyword, chosen_title or meta_title)
