@@ -23,7 +23,7 @@ from keywords import all_keywords
 import github_store
 from seo_analysis import analyze_article
 from competitor_research import compare_competitors
-from evidence_retrieval import validate_sources, retrieve, evidence_prompt
+from evidence_retrieval import validate_sources, retrieve, retrieve_hybrid, evidence_prompt
 from web_evidence import extract_page
 from keyword_research import build_research_prompt, parse_ai_suggestions, combine_keywords
 
@@ -1403,6 +1403,24 @@ def api_evidence_extract():
         return jsonify({"error": "Page extraction unavailable. Paste a relevant excerpt instead."}), 502
 
 
+def select_evidence(topic, sources, mode):
+    if not sources or mode != "hybrid":
+        return retrieve(topic, sources), "BM25 lexical retrieval"
+    if not gemini_client or os.getenv("SEO_SEMANTIC_RETRIEVAL", "") != "1":
+        return retrieve(topic, sources), "BM25 fallback"
+
+    def embed(texts):
+        model = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+        vectors = []
+        for start in range(0, len(texts), 16):
+            response = gemini_client.models.embed_content(
+                model=model, contents=texts[start:start + 16])
+            vectors.extend(list(item.values) for item in response.embeddings)
+        return vectors
+
+    return retrieve_hybrid(topic, sources, embed)
+
+
 @app.post("/api/evidence/preview")
 def api_evidence_preview():
     data = request.get_json(silent=True)
@@ -1415,7 +1433,11 @@ def api_evidence_preview():
         sources = validate_sources(data.get("evidence_sources", []))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
-    return jsonify({"passages": retrieve(topic, sources), "method": "BM25 lexical retrieval",
+    mode = data.get("evidence_mode", "lexical")
+    if mode not in ("lexical", "hybrid"):
+        return jsonify({"error": "Invalid retrieval mode."}), 400
+    passages, method = select_evidence(topic, sources, mode)
+    return jsonify({"passages": passages, "method": method,
                     "source_type": "Supplied text or search snippets; not independently verified"})
 
 
@@ -1452,6 +1474,8 @@ def api_generate():
                 return jsonify({"error": "Reference links must be HTTP or HTTPS URLs, one per line."}), 400
     try:
         data["evidence_sources"] = validate_sources(data.get("evidence_sources", []))
+        if data.get("evidence_mode", "lexical") not in ("lexical", "hybrid"):
+            raise ValueError("Invalid retrieval mode.")
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     secondary_keywords = data.get("secondary_keywords", [])
@@ -1492,7 +1516,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
 
     try:
         prompt = build_prompt(keyword, chosen_title, blog_purpose, audience_questions, blog_tone, secondary_keywords, data.get("language") or "English", data.get("audience", ""), data.get("market", ""), data.get("links", ""))
-        evidence = retrieve(" ".join([keyword, chosen_title or "", audience_questions]), data.get("evidence_sources", []))
+        evidence, evidence_method = select_evidence(" ".join([keyword, chosen_title or "", audience_questions]), data.get("evidence_sources", []), data.get("evidence_mode", "lexical"))
         prompt += evidence_prompt(evidence)
         raw_text = ""
 
@@ -1567,7 +1591,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
             "content": body,
             "word_count": word_count,
             "keyword_count": keyword_count,
-            "evidence": {"method": "BM25 lexical retrieval", "passages": evidence,
+            "evidence": {"method": evidence_method, "passages": evidence,
                          "status": "retrieved" if evidence else "no_matches" if data.get("evidence_sources") else "not_requested"},
             "secondary_keyword_counts": {
                 item["keyword"]: body.lower().count(item["keyword"].lower())

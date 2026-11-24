@@ -671,6 +671,8 @@ select.field-input{padding-left:12px;cursor:pointer}
             <p style="font-size:12px;color:var(--muted)">Optional Brave Search API; quota and billing terms apply. Search results contain snippets, not full articles. Review before adding.</p>
             <p id="evidence-search-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
             <div id="evidence-search-results" style="display:grid;gap:6px;max-height:260px;overflow:auto"></div>
+            <label class="field-label" for="evidence-mode">Retrieval method</label>
+            <select id="evidence-mode" class="field-input no-icon"><option value="lexical">BM25 keyword matching</option><option value="hybrid">Hybrid semantic matching (optional Gemini embeddings)</option></select>
             <div id="evidence-inputs"></div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"><button class="btn btn-secondary btn-sm" onclick="addEvidenceSource()">Add source</button><button class="btn btn-secondary btn-sm" id="evidence-preview-btn" onclick="previewEvidence()">Preview relevant evidence</button></div>
             <p id="evidence-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></p>
@@ -1684,6 +1686,7 @@ async function generateArticle(){
   const payload=Object.fromEntries(params);
   payload.secondary_keywords=sec;
   payload.evidence_sources=readEvidenceSources();
+  payload.evidence_mode=document.getElementById("evidence-mode").value;
   const url='/api/generate';
 
   try{
@@ -1722,7 +1725,7 @@ async function generateArticle(){
     setOutputState('rendered');
     setEditorTab('rendered');
     renderEvidenceResults(data.evidence?.passages||[]);
-    document.getElementById('evidence-status').textContent=data.evidence?.status==='retrieved'?'Generation received '+data.evidence.passages.length+' passages; check citations against sources.':data.evidence?.status==='no_matches'?'No matching evidence was found; article is not grounded in the supplied text.':'';
+    document.getElementById('evidence-status').textContent=data.evidence?.status==='retrieved'?data.evidence.method+' · Generation received '+data.evidence.passages.length+' passages; check citations against sources.':data.evidence?.status==='no_matches'?'No matching evidence was found; article is not grounded in the supplied text.':'';
     showToast('Article generated');
 
   }catch(err){
@@ -2159,11 +2162,11 @@ async function previewEvidence(){
   const status=document.getElementById('evidence-status'),button=document.getElementById('evidence-preview-btn');
   button.disabled=true;status.textContent='Finding relevant passages…';
   try{
-    const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,evidence_sources:readEvidenceSources()})});
+    const response=await fetch('/api/evidence/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('target-keyword').value,evidence_sources:readEvidenceSources(),evidence_mode:document.getElementById('evidence-mode').value})});
     const data=await readApiResponse(response);
     if(!response.ok)throw new Error(data.error||'Evidence retrieval failed');
     renderEvidenceResults(data.passages);
-    status.textContent=data.passages.length+' matching passages from supplied evidence. Not independently verified.';
+    status.textContent=data.method+' · '+data.passages.length+' matching passages. Not independently verified.';
   }catch(error){renderEvidenceResults([]);status.textContent=error.message||'Evidence retrieval failed';}
   finally{button.disabled=false;}
 }

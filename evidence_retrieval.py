@@ -41,9 +41,8 @@ def validate_sources(sources):
     return cleaned
 
 
-def retrieve(topic, sources, limit=6):
-    """Rank overlapping word windows using BM25; retain provenance."""
-    query = set(tokens(topic))
+def build_chunks(sources):
+    """Build bounded overlapping passages, retaining their source IDs."""
     chunks = []
     for i, source in enumerate(sources, 1):
         words = source["text"].split()
@@ -55,6 +54,11 @@ def retrieve(topic, sources, limit=6):
                                "kind": source.get("kind", "excerpt"), "passage": passage, "counts": counts, "length": sum(counts.values()), "offset": start})
             if start + 180 >= len(words):
                 break
+    return chunks
+
+
+def lexical_rank(topic, chunks):
+    query = set(tokens(topic))
     if not chunks or not query:
         return []
     n = len(chunks)
@@ -71,6 +75,10 @@ def retrieve(topic, sources, limit=6):
         if score > 0:
             ranked.append((score, chunk))
     ranked.sort(key=lambda pair: (-pair[0], pair[1]["source_id"], pair[1]["offset"]))
+    return ranked
+
+
+def select_passages(ranked, limit=6):
     results = []
     seen = Counter()
     budget = 12000
@@ -87,6 +95,56 @@ def retrieve(topic, sources, limit=6):
         if len(results) >= limit or budget <= 0:
             break
     return results
+
+
+def retrieve(topic, sources, limit=6):
+    return select_passages(lexical_rank(topic, build_chunks(sources)), limit)
+
+
+def cosine(a, b):
+    if not a or len(a) != len(b):
+        raise ValueError("Incompatible embedding dimensions.")
+    if any(not math.isfinite(x) for x in a) or any(not math.isfinite(x) for x in b):
+        raise ValueError("Invalid embedding values.")
+    norm_a = math.sqrt(sum(x*x for x in a))
+    norm_b = math.sqrt(sum(x*x for x in b))
+    if not norm_a or not norm_b:
+        raise ValueError("Empty embedding.")
+    return sum(x*y for x, y in zip(a, b)) / (norm_a * norm_b)
+
+
+def retrieve_hybrid(topic, sources, embed, limit=6):
+    """Fuse lexical and semantic rankings using reciprocal rank fusion.
+
+    Embedding scores are relevance estimates, not probabilities.
+    """
+    chunks = build_chunks(sources)
+    if not chunks:
+        return [], "BM25 lexical retrieval"
+    # Keep outbound requests bounded. Large collections use lexical fallback
+    # rather than silently ignoring any source.
+    if len(chunks) > 80:
+        return retrieve(topic, sources, limit), "BM25 fallback"
+    lexical = lexical_rank(topic, chunks)
+    try:
+        vectors = embed([topic] + [chunk["passage"][:2400] for chunk in chunks])
+        if len(vectors) != len(chunks) + 1:
+            raise ValueError("Incomplete embedding response.")
+        semantic = [(cosine(vectors[0], vector), chunk) for vector, chunk in zip(vectors[1:], chunks)]
+        semantic = sorted((pair for pair in semantic if pair[0] >= 0.45),
+                          key=lambda pair: (-pair[0], pair[1]["source_id"], pair[1]["offset"]))
+        scores = {}
+        by_key = {}
+        for ranking in (lexical, semantic):
+            for rank, (_, chunk) in enumerate(ranking, 1):
+                key = (chunk["source_id"], chunk["offset"])
+                scores[key] = scores.get(key, 0) + 1 / (60 + rank)
+                by_key[key] = chunk
+        fused = sorted(((score, by_key[key]) for key, score in scores.items()),
+                       key=lambda pair: (-pair[0], pair[1]["source_id"], pair[1]["offset"]))
+        return select_passages(fused, limit), "Hybrid BM25 and semantic retrieval"
+    except Exception:
+        return select_passages(lexical, limit), "BM25 fallback"
 
 
 def evidence_prompt(passages):
