@@ -808,7 +808,7 @@ def protect_owner_workspace():
         if not g.account:
             return jsonify({"error":"Authentication required."}), 401
         # Only isolated storage endpoints are available during restricted testing.
-        if request.endpoint in {"account_articles", "account_article"}:
+        if request.endpoint in {"account_articles", "account_article", "account_research", "account_research_item"}:
             if not account_request_allowed():
                 return jsonify({"error":"Account testing is restricted."}), 403
             if not github_store._configured():
@@ -915,10 +915,10 @@ def account_articles():
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "Send a JSON object."}), 400
-        if set(data) - {"content", "keyword", "meta_description", "version_of"}:
+        if set(data) - {"content", "keyword", "meta_description", "version_of", "research_ids"}:
             return jsonify({"error": "Unexpected article field."}), 400
         record = store.create_article(data.get("content"), data.get("keyword", ""),
-                                      data.get("meta_description", ""), data.get("version_of"))
+                                      data.get("meta_description", ""), data.get("version_of"), data.get("research_ids"))
         return jsonify(record), 201
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
@@ -938,6 +938,39 @@ def account_article(filename):
         return jsonify({"error":"Article storage unavailable."}), 503
     if record is None:
         return jsonify({"error":"Article not found."}), 404
+    return jsonify(record)
+
+
+@app.route("/api/accounts/research", methods=["GET", "POST"])
+def account_research():
+    if not account_mode():
+        abort(404)
+    try:
+        store = AccountStore(g.account["id"])
+        if request.method == "GET":
+            return jsonify({"research": store.list_research()})
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) != {"source"}:
+            return jsonify({"error": "Send a source object only."}), 400
+        return jsonify(store.create_research(data["source"])), 201
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        return jsonify({"error": "Research storage unavailable."}), 503
+
+
+@app.get("/api/accounts/research/<filename>")
+def account_research_item(filename):
+    if not account_mode():
+        abort(404)
+    try:
+        record = AccountStore(g.account["id"]).read_research(filename)
+    except ValueError:
+        return jsonify({"error":"Research source not found."}), 404
+    except Exception:
+        return jsonify({"error":"Research storage unavailable."}), 503
+    if record is None:
+        return jsonify({"error":"Research source not found."}), 404
     return jsonify(record)
 
 
