@@ -188,99 +188,113 @@ def _is_acronym(word):
     return word.isupper() and len(word) <= 4
 
 
+# Generic photographic words do not establish a match to a concrete subject.
+_IMAGE_GENERIC = STOPWORDS | {
+    "image", "photo", "photograph", "photography", "picture", "illustration",
+    "showing", "depicting", "realistic", "conceptual", "scene", "view", "closeup",
+    "close", "background", "beautiful", "modern", "professional", "person",
+    "people", "man", "woman", "hands", "hand", "using", "working", "work",
+    "table", "desk", "office", "guide", "tips", "best", "how", "what",
+    "stock", "concept", "shot", "detail", "example", "with", "and", "for",
+    "from", "this", "that", "your", "their", "is", "are", "of", "in", "on",
+}
+
+
+def image_terms(text):
+    result = []
+    for word in re.findall(r"[^\W_]+", (text or "").casefold()):
+        if len(word) < 3 or word in _IMAGE_GENERIC or word.isnumeric():
+            continue
+        # Conservative English plural normalization. Other scripts stay intact.
+        if len(word) > 4 and word.endswith("ies"):
+            word = word[:-3] + "y"
+        elif len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
+            word = word[:-1]
+        if word not in result:
+            result.append(word)
+    return result
+
+
 def clean_image_search_query(raw_query, primary_keyword="", section_context=""):
-    clean = re.sub(
-        r"(?i)\b(image|photo|photograph|illustration|picture|depicting|showing|a\s+view\s+of|conceptual|shot\s+of|realistic|vector|graphic)\b",
-        "",
-        raw_query,
-    )
-    clean = re.sub(r"[^\w\s]", " ", clean).strip()
-    desc_words = [w for w in clean.split() if len(w) > 2 and w.lower() not in STOPWORDS]
+    # Prefer the concrete requested scene, not a vague heading or generic fallback.
+    raw_terms = image_terms(raw_query)
+    context_terms = image_terms(section_context) + image_terms(primary_keyword)
+    return " ".join(dict.fromkeys(raw_terms + context_terms))[:180] if not raw_terms else " ".join(raw_terms[:6])
 
-    # Blend in the section heading so that if the model reuses the same marker
-    # description in multiple places, the search still differs per section
-    # instead of returning the same photo throughout the article.
-    heading_words = [
-        w for w in re.sub(r"[^\w\s]", " ", section_context).split()
-        if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
-        and w.lower() not in {"software", "system", "management", }
-    ]
 
-    seen = set()
-    combined = []
-    for w in heading_words[:3] + desc_words:
-        wl = w.lower()
-        if wl not in seen:
-            seen.add(wl)
-            combined.append(w)
+def rank_pexels_photos(photos, description, primary_keyword="", section_context="", used_urls=None):
+    """Rank only photos with meaningful provider-supplied descriptive metadata.
 
-    if len(combined) >= 2:
-        return " ".join(combined[:6])
-
-    # Not enough to go on from the marker text alone - fall back to context,
-    # Skip acronyms that may return irrelevant photos.
-    context_words = [
-        w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
-        if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
-        and w.lower() not in {"software", "system", "management", "in"}
-    ]
-    if context_words:
-        return " ".join(context_words[:3])
-
-    return primary_keyword or "nature"
+    This is a conservative text filter, not computer vision. Missing descriptions
+    and weak matches are intentionally rejected.
+    """
+    used_urls = used_urls or set()
+    requested = set(image_terms(description))
+    topic = set(image_terms(primary_keyword))
+    section = set(image_terms(section_context))
+    if not requested:
+        return []
+    ranked = []
+    for index, photo in enumerate(photos):
+        if not isinstance(photo, dict):
+            continue
+        src = photo.get("src")
+        url = src.get("large") if isinstance(src, dict) else None
+        if not isinstance(url, str) or url in used_urls:
+            continue
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme != "https" or parsed.hostname != "images.pexels.com" or parsed.username or parsed.password:
+                continue
+        except ValueError:
+            continue
+        alt = photo.get("alt")
+        if not isinstance(alt, str):
+            continue
+        labels = set(image_terms(alt))
+        overlap = requested & labels
+        # At least two concrete scene terms (or the sole specific term).
+        required = min(2, len(requested))
+        if len(overlap) < required or len(overlap) / len(requested) < 0.4:
+            continue
+        context = (topic | section) & labels
+        # If the description itself mentions the topic/section, retain at least
+        # one of those contextual anchors rather than a generic scene match.
+        anchors = requested & (topic | section)
+        if anchors and not (anchors & labels):
+            continue
+        score = 5 * len(overlap) / len(requested) + 2 * len(context) / max(1, len(topic | section))
+        ranked.append((score, index, url))
+    return [url for _, _, url in sorted(ranked, key=lambda row: (-row[0], row[1]))]
 
 
 def get_pexels_image(query, primary_keyword="", section_context="", used_urls=None):
-    used_urls = used_urls if used_urls is not None else set()
-    if not pexels_key:
+    if not pexels_key or not image_terms(query):
         return None
-
-    def first_unused(photos):
-        for photo in photos:
-            url = photo["src"]["large"]
-            if url not in used_urls:
-                return url
-        return None
-
     search_query = clean_image_search_query(query, primary_keyword, section_context)
-    headers = {"Authorization": pexels_key}
-    params = {"query": search_query, "per_page": 5, "orientation": "landscape"}
-
-    try:
-        response = requests.get(
-            "https://api.pexels.com/v1/search",
-            headers=headers,
-            params=params,
-            timeout=7,
-        )
-        if response.status_code == 200:
-            data = response.json()
-            photos = data.get("photos") or []
-            picked = first_unused(photos)
-            if picked:
-                return picked
-    except Exception as e:
-        app.logger.warning("Pexels fetch failed for '%s': %s", search_query, e)
-
-    # Broad fallback that stays on-topic instead of an unrelated single word
-    # or acronym.
-    try:
-        fallback_words = [
-            w for w in re.sub(r"[^\w\s]", " ", f"{section_context} {primary_keyword}").split()
-            if len(w) > 2 and w.lower() not in STOPWORDS and not _is_acronym(w)
-        ]
-        broad_query = ' '.join(fallback_words[:2]) if fallback_words else (primary_keyword or 'nature')
-        fallback_params = {"query": broad_query, "per_page": 5, "orientation": "landscape"}
-        fallback_res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=fallback_params, timeout=5)
-        if fallback_res.status_code == 200:
-            data = fallback_res.json()
-            photos = data.get("photos") or []
-            picked = first_unused(photos)
-            if picked:
-                return picked
-    except Exception:
-        pass
-
+    # A bounded second attempt preserves scene terms while adding context.
+    scene = image_terms(query)
+    context = image_terms(section_context) + image_terms(primary_keyword)
+    alternative = " ".join(list(dict.fromkeys(scene[:3] + context))[:6])
+    queries = list(dict.fromkeys(q for q in (search_query, alternative) if q))
+    for phrase in queries:
+        try:
+            response = requests.get(
+                "https://api.pexels.com/v1/search",
+                headers={"Authorization": pexels_key},
+                params={"query": phrase, "per_page": 15, "orientation": "landscape"},
+                timeout=(3, 5),
+            )
+            if response.status_code in (401, 403, 429):
+                return None
+            if response.status_code != 200:
+                continue
+            photos = response.json().get("photos") or []
+            matches = rank_pexels_photos(photos, query, primary_keyword, section_context, used_urls)
+            if matches:
+                return matches[0]
+        except Exception:
+            app.logger.warning("Pexels search unavailable")
     return None
 
 
@@ -795,7 +809,7 @@ REFERENCES AND FACTUAL ACCURACY
 
 MEDIA
 - Include up to four unique [IMAGE: English description of a relevant real scene] markers only where a real photograph genuinely supports the surrounding text.
-- Describe specific distinct scenes; place markers near relevant paragraphs and never stack them together.
+- Describe specific distinct, physically photographable scenes in English, using 2–6 concrete subject terms connected to the article topic and current section. Avoid generic office, people, laptop or decorative photos unless the actual subject requires them. Omit markers for abstract subjects with no suitable real scene. Place markers near relevant paragraphs and never stack them together.
 - Include an optional [DIAGRAM: flowchart LR; A[Start] --> B[Finish]] marker if a process benefits from it. Keep labels clear and relevant.
 
 Output only the finished Markdown article."""
@@ -1204,7 +1218,8 @@ def _format_interest_over_time(interest, keyword):
         return {"labels": [], "values": []}
 
     series = interest[keyword].fillna(0).astype(int)
-    labels = [index.strftime("%b %d") for index in series.index]
+    subdaily = any(getattr(index, "hour", 0) or getattr(index, "minute", 0) for index in series.index)
+    labels = [index.strftime("%b %d %H:%M" if subdaily else "%b %d") for index in series.index]
     return {"labels": labels, "values": series.tolist()}
 
 
@@ -1299,6 +1314,13 @@ _TRENDS_USER_AGENTS = [
 
 
 def fetch_trends_data(searched_keyword, timeframe, geo=""):
+    now = time.time()
+    for key, entry in list(_TRENDS_CACHE.items()):
+        if now - entry["timestamp"] >= entry["ttl"]:
+            _TRENDS_CACHE.pop(key, None)
+    while len(_TRENDS_CACHE) >= 128:
+        oldest = min(list(_TRENDS_CACHE), key=lambda key: _TRENDS_CACHE.get(key, {}).get("timestamp", 0))
+        _TRENDS_CACHE.pop(oldest, None)
     cache_key = (searched_keyword.casefold(), timeframe, geo)
     cached = _TRENDS_CACHE.get(cache_key)
     if cached and time.time() - cached["timestamp"] < cached["ttl"]:
@@ -1313,7 +1335,7 @@ def fetch_trends_data(searched_keyword, timeframe, geo=""):
     ]
 
     last_error = None
-    attempts = 3
+    attempts = 1
     for attempt in range(attempts):
         if attempt:
             time.sleep((attempt * 3) + random.uniform(0.5, 2.0))
@@ -1324,7 +1346,7 @@ def fetch_trends_data(searched_keyword, timeframe, geo=""):
             "geo": "",
             "retries": 0,
             "backoff_factor": 0,
-            "timeout": (10, 60),
+            "timeout": (3, 8),
             "requests_args": {
                 "headers": {"User-Agent": random.choice(_TRENDS_USER_AGENTS)}
             },
@@ -1424,6 +1446,7 @@ def api_trends():
         app.logger.warning("Google Trends request failed for %r: %s", searched_keyword, error)
         fallback = get_fallback_trend_data(geo)
         fallback["searched_keyword"] = searched_keyword
+        fallback["timeframe"] = timeframe_key
         fallback["source"] = "rate-limited" if "429" in str(error) else "unavailable"
         response = jsonify(fallback)
         if fallback["source"] == "rate-limited":
