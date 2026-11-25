@@ -278,9 +278,11 @@ def rank_pexels_photos(photos, description, primary_keyword="", section_context=
         overlap = requested & labels
         # At least two concrete scene terms (or the sole specific term).
         required = min(2, len(requested))
-        if len(overlap) < required or len(overlap) / len(requested) < 0.4:
-            continue
         context = (topic | section) & labels
+        # Allow sparse but specific metadata when the topic and scene agree.
+        strong_context = bool(topic & labels & requested) and bool(overlap - topic) and len(overlap) >= 2
+        if len(overlap) < required or (len(overlap) / len(requested) < 0.4 and not strong_context):
+            continue
         # If the description itself mentions the topic/section, retain at least
         # one of those contextual anchors rather than a generic scene match.
         anchors = requested & (topic | section)
@@ -298,14 +300,16 @@ def get_pexels_image(query, primary_keyword="", section_context="", used_urls=No
     # A bounded second attempt preserves scene terms while adding context.
     scene = image_terms(query)
     context = image_terms(section_context) + image_terms(primary_keyword)
-    alternative = " ".join(list(dict.fromkeys(scene[:3] + context))[:6])
+    # Short queries usually work better than long prose on stock libraries.
+    topic_terms = image_terms(primary_keyword)
+    alternative = " ".join(list(dict.fromkeys([term for term in topic_terms if term in scene] + scene[:3] + context))[:4])
     queries = list(dict.fromkeys(q for q in (search_query, alternative) if q))
     for phrase in queries:
         try:
             response = requests.get(
                 "https://api.pexels.com/v1/search",
                 headers={"Authorization": pexels_key},
-                params={"query": phrase, "per_page": 15, "orientation": "landscape"},
+                params={"query": phrase, "per_page": 30, "orientation": "landscape"},
                 timeout=(3, 5),
             )
             if response.status_code in (401, 403, 429):
@@ -371,7 +375,52 @@ def get_nearest_heading(text, position):
     return heading
 
 
-def replace_image_markers(blog_text, primary_keyword=""):
+def add_section_photo_candidates(body, primary_keyword, target=3):
+    """Add bounded, context-derived candidate markers to visual H2 sections.
+
+    No extra AI calls. Avoid abstract/generic headings, FAQs, fenced examples
+    and sections already containing an image marker or a Markdown image.
+    """
+    if not pexels_key or target <= 0:
+        return body
+    existing = len(extract_bracket_blocks(body, "[IMAGE:"))
+    if existing >= target:
+        return body
+    topic = image_terms(primary_keyword)
+    if not topic:
+        return body
+    # Only use concrete subject/action evidence rather than guessing a scene.
+    visual = set("farm plantation garden plant seed seedling soil harvest cherry bean tree fruit flower crop field forest mountain river beach lake animal bird dog cat fish kitchen cooking food bread meal vegetable recipe ingredient workshop tool machine engine bicycle car roof panel building house room furniture fabric clothing textile factory construction equipment orchard greenhouse irrigation landscape coffee tea drying roasting baking painting pottery sculpture".split())
+    generic = set("introduction conclusion summary overview faq faqs question answer benefit advantage challenge cost price guide step tip strategy importance future consideration requirement checklist legal regulation".split())
+    if not set(topic) & visual:
+        return body
+    parts = re.split(r"(?m)(^## [^\n]+$)", body)
+    fence = False
+    added = 0
+    for i in range(1, len(parts), 2):
+        if len(re.findall(r"(?m)^ {0,3}(?:\x60{3,}|~{3,})", "".join(parts[:i]))) % 2:
+            continue
+        heading = parts[i][3:].strip()
+        section = parts[i+1]
+        terms = image_terms(heading)
+        if not terms or set(terms) & generic or not set(terms) & visual:
+            continue
+        if "[IMAGE:" in section or re.search(r"!\[", section):
+            continue
+        if len(section.strip()) < 60 or re.search(r"(?m)^ {0,3}(?:\x60{3,}|~{3,})", section):
+            continue
+        scene = " ".join(list(dict.fromkeys(topic[:2] + [term for term in terms if term in visual]))[:5])
+        if len(scene.split()) < 2:
+            continue
+        parts[i+1] = section.rstrip() + "\n\n[IMAGE: " + scene + "]\n\n"
+        added += 1
+        if existing + added >= target:
+            break
+    return "".join(parts)
+
+
+def replace_image_markers(blog_text, primary_keyword="", target_photos=3):
+    blog_text = add_section_photo_candidates(blog_text, primary_keyword, target_photos)
     image_blocks = extract_bracket_blocks(blog_text, "[IMAGE:")
     diagram_blocks = extract_bracket_blocks(blog_text, "[DIAGRAM:")
 
@@ -391,6 +440,20 @@ def replace_image_markers(blog_text, primary_keyword=""):
         markdown_image = f"\n\n![{clean_caption}]({image_url})\n\n"
         blog_text = blog_text.replace(full_match, markdown_image, 1)
 
+    # One additional contextual pass for a shortfall, with at most two
+    # new lookups. Each lookup has at most two provider requests.
+    if len(used_urls) < target_photos and pexels_key:
+        retry_body = add_section_photo_candidates(blog_text, primary_keyword, min(2, target_photos - len(used_urls)))
+        for full_match, description in extract_bracket_blocks(retry_body, "[IMAGE:")[:2]:
+            position = retry_body.find(full_match)
+            section_context = get_nearest_heading(retry_body, position)
+            image_url = get_pexels_image(description, primary_keyword, section_context, used_urls)
+            replacement = ""
+            if image_url:
+                used_urls.add(image_url)
+                replacement = f"\n\n![{description}]({image_url})\n\n"
+            retry_body = retry_body.replace(full_match, replacement, 1)
+        blog_text = retry_body
     diagram_count = 0
     for index, (full_match, diagram_code) in enumerate(diagram_blocks):
         if index >= 2 or len(diagram_code) > 2000 or not diagram_code.strip():
@@ -772,8 +835,8 @@ REFERENCES AND FACTUAL ACCURACY
 - Do not assume a particular jurisdiction, currency, company or industry unless the brief specifies it.
 
 MEDIA
-- Include up to four unique [IMAGE: English description of a relevant real scene] markers only where a real photograph genuinely supports the surrounding text.
-- Describe specific distinct, physically photographable scenes in English, using 2–6 concrete subject terms connected to the article topic and current section. Avoid generic office, people, laptop or decorative photos unless the actual subject requires them. Omit markers for abstract subjects with no suitable real scene. Place markers near relevant paragraphs and never stack them together.
+- For photographable topics, aim for 2 relevant stock photos in articles under 800 words and 3 in longer articles. Supply up to four unique [IMAGE: English description of a relevant real scene] markers as candidate scenes, in distinct sections. Omit unsuitable scenes rather than adding unrelated imagery.
+- Describe specific distinct, physically photographable scenes in English, using 2–5 concrete subject terms connected to the article topic and current section. Prefer searchable noun phrases (for example, coffee plantation seedlings, coffee cherry harvest, coffee beans drying) over full sentences. Include the specific subject in every marker, not just a generic action. Avoid generic office, people, laptop or decorative photos unless the actual subject requires them. Omit markers for abstract subjects with no suitable real scene. Place markers near relevant paragraphs and never stack them together.
 - Include an optional [DIAGRAM: flowchart LR; A[Start] --> B[Finish]] marker if a process benefits from it. Keep labels clear and relevant.
 
 Output only the finished Markdown article."""
@@ -1901,7 +1964,7 @@ def _generate_article(data, keyword, chosen_title, blog_purpose, audience_questi
         body = clean_keyword_artifacts(body, keyword)
 
         body = distribute_media_markers(body)
-        body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword)
+        body, photo_count, diagram_count = replace_image_markers(body, primary_keyword=keyword, target_photos=2 if target_words < 800 else 3)
         body = ensure_h1_title(body, chosen_title or keyword)
         body = clean_keyword_artifacts(body, keyword)
 
