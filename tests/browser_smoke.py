@@ -72,6 +72,15 @@ def main():
                 page.locator("#evidence-preview-btn").click()
                 expect(page.locator("#evidence-results")).to_contain_text("Indoor herbs need sunlight and water.")
                 page.get_by_text("Evidence grounding (optional)", exact=True).click()
+                assert page.evaluate("""() => {
+                    const primary = document.getElementById('target-keyword');
+                    const secondary = document.getElementById('secondary-keyword-list');
+                    const power = document.getElementById('power-words-mode');
+                    return !!(primary.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING)
+                        && !!(secondary.compareDocumentPosition(power) & Node.DOCUMENT_POSITION_FOLLOWING)
+                        && !secondary.closest('#settings-body');
+                }""")
+                expect(page.get_by_role("button", name="Add keyword", exact=True)).to_be_visible()
                 page.locator("#btn-fetch-titles").click()
                 expect(page.locator(".brainstorm-card").first).to_be_visible()
                 page.locator(".brainstorm-card").first.click()

@@ -648,6 +648,16 @@ select.field-input{padding-left:12px;cursor:pointer}
             </div>
           </div>
 
+          <!-- Secondary keywords -->
+          <div class="field">
+            <div class="field-label">Secondary keywords (optional)</div>
+            <div id="secondary-keyword-list" style="display:flex;flex-direction:column;gap:8px"></div>
+            <button type="button" onclick="addSecondaryKeyword()" class="btn btn-ghost btn-sm" style="align-self:flex-start">
+              <i data-lucide="plus" style="width:14px;height:14px" aria-hidden="true"></i>
+              Add keyword
+            </button>
+          </div>
+
           <div class="field">
             <label for="power-words-mode" class="field-label">Add power words in titles</label>
             <select id="power-words-mode" class="field-input no-icon">
@@ -715,16 +725,6 @@ select.field-input{padding-left:12px;cursor:pointer}
               <i data-lucide="chevron-right" style="width:15px;height:15px" class="settings-chevron" aria-hidden="true"></i>
             </button>
             <div class="settings-body" id="settings-body">
-
-              <!-- Secondary keywords -->
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Secondary keywords</div>
-              <div id="secondary-keyword-list" style="display:flex;flex-direction:column;gap:8px"></div>
-              <button type="button" onclick="addSecondaryKeyword()" class="btn btn-ghost btn-sm" style="align-self:flex-start">
-                <i data-lucide="plus" style="width:14px;height:14px" aria-hidden="true"></i>
-                Add keyword
-              </button>
-
-              <hr style="border:none;border-top:1px solid var(--border)">
 
               <!-- Blog purpose textbox (inside settings) -->
               <div class="field">
