@@ -1667,7 +1667,7 @@ async function fetchTitleOptions(){
   setOutputState('brainstorm');
 
   try{
-    const res=await fetch('/api/titles/'+encodeURIComponent(kw)+'?power_words='+encodeURIComponent(powerWordsMode)+'&language='+encodeURIComponent(document.getElementById('article-language').value)+'&audience='+encodeURIComponent(document.getElementById('article-audience').value));
+    const res=await fetch('/api/titles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keyword:kw,power_words:powerWordsMode,language:document.getElementById('article-language').value,audience:document.getElementById('article-audience').value})});
     const data=await readApiResponse(res);
     if(requestId!==workspaceRequestId)return;
     if(!res.ok)throw new Error(data.error||'Title generation failed');

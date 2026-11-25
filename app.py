@@ -2,7 +2,7 @@ from flask import Flask, abort, render_template, jsonify, request, Response, g, 
 from hmac import compare_digest
 from dotenv import dotenv_values, load_dotenv
 from datetime import date
-from urllib.parse import unquote_plus
+from urllib.parse import unquote, unquote_plus
 import os
 import re
 import random
@@ -1663,17 +1663,34 @@ def api_keyword_research():
                     "keywords": combine_keywords(topic, suggestions, trends)})
 
 
-@app.route("/api/titles/<path:keyword>")
-def api_titles(keyword):
-    keyword = (keyword or "").strip()
+@app.post("/api/titles")
+@app.get("/api/titles/<path:keyword>")
+def api_titles(keyword=None):
+    if request.method == "POST":
+        options = request.get_json(silent=True)
+        if not isinstance(options, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
+        keyword = options.get("keyword", "")
+    else:
+        # Compatibility for clients whose hosting adapter leaves path escapes intact.
+        options = request.args
+        if re.search(r"%[0-9A-Fa-f]{2}", keyword or ""):
+            keyword = unquote(keyword)
+    if not isinstance(keyword, str):
+        return jsonify({"error": "Invalid keyword."}), 400
+    keyword = keyword.strip()
     if not keyword or len(keyword) > 300:
         return jsonify({"error": "Enter a topic of at most 300 characters."}), 400
-    language = request.args.get("language", "English").strip() or "English"
-    audience = request.args.get("audience", "")
-    if len(language) > 80 or len(audience) > 300:
+    language = options.get("language", "English")
+    audience = options.get("audience", "")
+    power_words_mode = options.get("power_words", "no")
+    if not all(isinstance(value, str) for value in (language, audience, power_words_mode)):
+        return jsonify({"error": "Invalid title options."}), 400
+    language = language.strip() or "English"
+    if len(language) > 80 or len(audience) > 300 or len(power_words_mode) > 10:
         return jsonify({"error": "Invalid language or audience."}), 400
 
-    power_words_mode = request.args.get("power_words", "no").strip().lower()
+    power_words_mode = power_words_mode.strip().lower()
     include_power_words = power_words_mode in {"yes", "true", "1", "on"}
     primary_keywords = parse_primary_keywords(keyword)
 

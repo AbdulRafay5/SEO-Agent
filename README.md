@@ -85,7 +85,9 @@ For a separate guest deployment, set SEO_GUEST_MODE=1 with owner mode disabled. 
 
 POST /api/generate accepts JSON with primary_keyword and optional title, language, audience, market, purpose, questions, tone, links, secondary_keywords, target_words, evidence_sources and evidence_mode. Reference links are HTTP(S), one per line. Request bodies are capped at 256 KiB.
 
-Other endpoints include /api/titles/<keyword>, /api/trends, /api/keywords/research, /api/competitors/compare, /api/competitors/search, /api/evidence/preview, /api/evidence/search, /api/evidence/extract, /api/seo/analyze and /api/editor/revise. Owner storage endpoints include /api/blog/<filename> and /api/blog/versions.
+POST /api/titles accepts JSON with keyword, power_words, language and audience. Passing text in JSON avoids percent-encoded URL path problems on hosted deployments. The legacy GET /api/titles/<keyword> route remains available for compatibility.
+
+Other endpoints include /api/trends, /api/keywords/research, /api/competitors/compare, /api/competitors/search, /api/evidence/preview, /api/evidence/search, /api/evidence/extract, /api/seo/analyze and /api/editor/revise. Owner storage endpoints include /api/blog/<filename> and /api/blog/versions.
 
 ## Testing
 
